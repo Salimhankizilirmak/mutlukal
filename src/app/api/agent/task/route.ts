@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { devices, importBatches } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -17,12 +17,14 @@ export async function GET(request: Request) {
 
   if (!device) return NextResponse.json({ error: 'Invalid secret' }, { status: 401 });
 
-  const batch = await db.query.importBatches.findFirst({
-    where: and(
+  const [batch] = await db.select()
+    .from(importBatches)
+    .where(and(
       eq(importBatches.deviceId, device.id),
       eq(importBatches.status, 'pending')
-    )
-  });
+    ))
+    .orderBy(desc(importBatches.id))
+    .limit(1);
 
   if (!batch) return NextResponse.json({ message: 'No pending tasks' });
 
