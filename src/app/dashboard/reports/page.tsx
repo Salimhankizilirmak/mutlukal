@@ -1,6 +1,6 @@
 import { db } from '@/db';
 import { importBatches, devices, productionReports } from '@/db/schema';
-import { auth } from '@clerk/nextjs/server';
+import { getFactoryContext } from '@/lib/auth-context';
 import { eq, desc, inArray } from 'drizzle-orm';
 import { FileText, ClipboardList } from 'lucide-react';
 import ReportActions from '@/components/ReportActions';
@@ -8,10 +8,10 @@ import ReportActions from '@/components/ReportActions';
 export const dynamic = 'force-dynamic';
 
 export default async function ReportsPage() {
-  const { userId } = await auth();
+  const { factoryId } = await getFactoryContext();
 
   const myDevices = await db.query.devices.findMany({
-    where: eq(devices.factoryOwnerId, userId!)
+    where: eq(devices.factoryOwnerId, factoryId!)
   });
   
   if (myDevices.length === 0) {

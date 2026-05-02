@@ -2,16 +2,16 @@ import BatchForm from '@/components/BatchForm';
 import { SendToBack, Clock, CheckCircle2 } from 'lucide-react';
 import { db } from '@/db';
 import { importBatches } from '@/db/schema';
-import { auth } from '@clerk/nextjs/server';
+import { getFactoryContext } from '@/lib/auth-context';
 import { devices } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
 export default async function BatchesPage() {
-  const { userId } = await auth();
+  const { factoryId } = await getFactoryContext();
   const devices_list = await db.query.devices.findMany({
-    where: eq(devices.factoryOwnerId, userId!)
+    where: eq(devices.factoryOwnerId, factoryId!)
   });
   const deviceIds = devices_list.map(d => d.id);
 

@@ -2,7 +2,7 @@ import { isSuperAdmin } from '@/lib/roles';
 import { getCompany, setupCompany } from '@/actions/company';
 import { UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
-import { Activity, MonitorDot, SendToBack, ShieldAlert, Factory, FileText } from 'lucide-react';
+import { Activity, MonitorDot, SendToBack, ShieldAlert, Factory, FileText, Users } from 'lucide-react';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const isAdmin = await isSuperAdmin();
@@ -47,6 +47,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <Link href="/dashboard/devices" className="flex items-center gap-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/30 p-3 rounded-lg transition-all"><MonitorDot size={20} /> Cihazlar</Link>
           <Link href="/dashboard/batches" className="flex items-center gap-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/30 p-3 rounded-lg transition-all"><SendToBack size={20} /> İş Emirleri</Link>
           <Link href="/dashboard/reports" className="flex items-center gap-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/30 p-3 rounded-lg transition-all"><FileText size={20} /> Raporlar</Link>
+          <Link href="/dashboard/employees" className="flex items-center gap-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/30 p-3 rounded-lg transition-all"><Users size={20} /> Personeller</Link>
           {isAdmin && <Link href="/dashboard/super-admin" className="flex items-center gap-3 text-amber-500 hover:bg-amber-500/10 p-3 rounded-lg transition-all mt-8 border border-amber-500/20"><ShieldAlert size={20} /> Süper Admin</Link>}
         </nav>
         
@@ -79,6 +80,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <Link href="/dashboard/devices" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><MonitorDot size={24} /><span className="text-[10px]">Cihazlar</span></Link>
         <Link href="/dashboard/batches" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><SendToBack size={24} /><span className="text-[10px]">İş Emirleri</span></Link>
         <Link href="/dashboard/reports" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><FileText size={24} /><span className="text-[10px]">Raporlar</span></Link>
+        <Link href="/dashboard/employees" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><Users size={24} /><span className="text-[10px]">Personel</span></Link>
         {isAdmin && <Link href="/dashboard/super-admin" className="flex flex-col items-center gap-1 text-amber-500 hover:text-amber-400"><ShieldAlert size={24} /><span className="text-[10px]">Admin</span></Link>}
       </nav>
     </div>

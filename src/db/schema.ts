@@ -52,3 +52,12 @@ export const batches = sqliteTable('batches', {
   status: text('status').default('pending'),
   createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
+
+export const employees = sqliteTable('employees', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  clerkUserId: text('clerk_user_id').notNull().unique(),
+  factoryOwnerId: text('factory_owner_id').notNull(),
+  username: text('username').notNull(),
+  role: text('role').notNull(), // 'Genel Müdür', 'Üretim Müdürü', 'Pazarlama', 'Lojistik' vb.
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+});

@@ -3,11 +3,11 @@
 import { db } from '@/db';
 import { devices } from '@/db/schema';
 import { v4 as uuidv4 } from 'uuid';
-import { auth } from '@clerk/nextjs/server';
+import { getFactoryContext } from '@/lib/auth-context';
 
 export async function createDevice(formData: FormData) {
-  const { userId } = await auth();
-  if (!userId) throw new Error('Unauthorized');
+  const { factoryId } = await getFactoryContext();
+  if (!factoryId) throw new Error('Unauthorized');
 
   const name = formData.get('name') as string;
   const lineId = formData.get('lineId') as string;
@@ -24,6 +24,6 @@ export async function createDevice(formData: FormData) {
     name,
     deviceSecret,
     pinCode,
-    factoryOwnerId: userId
+    factoryOwnerId: factoryId
   });
 }
