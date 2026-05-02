@@ -13,7 +13,11 @@ export async function getFactoryContext() {
 
   // 2. Kullanıcı Personel mi?
   const employee = await db.select().from(employees).where(eq(employees.clerkUserId, userId)).limit(1);
-  if (employee.length > 0) return { factoryId: employee[0].factoryOwnerId, role: employee[0].role, company: null };
+  if (employee.length > 0) {
+    const factoryOwnerId = employee[0].factoryOwnerId;
+    const empCompany = await db.select().from(companies).where(eq(companies.ownerId, factoryOwnerId)).limit(1);
+    return { factoryId: factoryOwnerId, role: employee[0].role, company: empCompany[0] || null };
+  }
 
   return { factoryId: null, role: null, company: null };
 }

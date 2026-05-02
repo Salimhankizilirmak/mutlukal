@@ -1,12 +1,13 @@
 import { isSuperAdmin } from '@/lib/roles';
-import { getCompany, setupCompany } from '@/actions/company';
+import { getFactoryContext } from '@/lib/auth-context';
+import { setupCompany } from '@/actions/company';
 import { UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
 import { Activity, MonitorDot, SendToBack, ShieldAlert, Factory, FileText, Users } from 'lucide-react';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const isAdmin = await isSuperAdmin();
-  const company = await getCompany();
+  const { company } = await getFactoryContext();
 
   // Firma kaydı yoksa ve Süper Admin değilse Onboarding ekranı göster
   if (!company && !isAdmin) {
