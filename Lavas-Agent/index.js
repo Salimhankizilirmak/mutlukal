@@ -3,10 +3,7 @@ const path = require('path');
 const axios = require('axios');
 const notifier = require('node-notifier');
 const express = require('express');
-
-// pkg paketi kullanırken 'open' gibi native kütüphaneleri dinamik import ile almak daha güvenlidir
-let open;
-import('open').then(module => { open = module.default; });
+const { exec } = require('child_process');
 
 const app = express();
 app.use(express.json());
@@ -20,7 +17,13 @@ const ARSIV_DIR = path.join(DESKTOP_DIR, 'Arsiv');
 [IS_EMRI_DIR, ARSIV_DIR].forEach(dir => { if (!fs.existsSync(dir)) fs.mkdirSync(dir); });
 
 function loadConfig() {
-    if (fs.existsSync(CONFIG_FILE)) return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    if (fs.existsSync(CONFIG_FILE)) {
+        try {
+            return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+        } catch (e) {
+            return null;
+        }
+    }
     return null;
 }
 
@@ -247,12 +250,18 @@ app.post('/api/download', async (req, res) => {
 const PORT = 3001; // Next.js is usually 3000
 app.listen(PORT, () => {
     console.log(`Lavaş Trace Cihaz Ajanı başlatıldı: http://localhost:${PORT}`);
-    // Tarayıcıyı otomatik aç
-    if (open) {
-        open(`http://localhost:${PORT}`);
-    } else {
-        setTimeout(() => {
-            if (open) open(`http://localhost:${PORT}`);
-        }, 1000);
+    console.log(`Tarayıcı otomatik açılmazsa, lütfen şu adrese gidin: http://localhost:${PORT}`);
+    console.log(`Bu pencereyi kapatırsanız ajan duracaktır.`);
+    
+    // Tarayıcıyı otomatik aç (Windows)
+    try {
+        exec(`start http://localhost:${PORT}`);
+    } catch (e) {
+        console.error("Tarayıcı açılamadı:", e);
     }
+});
+
+// Hataların uygulamayı çökertmesini engelle
+process.on('uncaughtException', (err) => {
+    console.error('Beklenmeyen Hata:', err);
 });
