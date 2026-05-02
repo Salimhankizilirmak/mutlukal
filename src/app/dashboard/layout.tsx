@@ -14,7 +14,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div className="flex items-center justify-center min-h-screen bg-[#09090b] p-4">
         <div className="bg-[#18181b]/80 backdrop-blur-md border border-emerald-500/30 rounded-2xl p-8 max-w-md w-full shadow-[0_0_30px_rgba(16,185,129,0.1)]">
           <div className="flex justify-center mb-6"><Factory className="w-16 h-16 text-emerald-500" /></div>
-          <h2 className="text-2xl font-bold text-center text-zinc-100 mb-2">Lavaş Trace'e Hoş Geldiniz</h2>
+          <h2 className="text-2xl font-bold text-center text-zinc-100 mb-2">Lavaş Trace&apos;e Hoş Geldiniz</h2>
           <p className="text-zinc-400 text-center mb-8 text-sm">Sistemi kullanmaya başlamadan önce lütfen işletmenizi tanımlayın.</p>
           <form action={setupCompany} className="flex flex-col gap-4">
             <div>
