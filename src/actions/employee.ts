@@ -6,7 +6,7 @@ import { getFactoryContext } from '@/lib/auth-context';
 import { revalidatePath } from 'next/cache';
 import { eq } from 'drizzle-orm';
 
-export async function createEmployee(prevState: any, formData: FormData) {
+export async function createEmployee(_prevState: unknown, formData: FormData) {
   try {
     const { factoryId, role: currentUserRole } = await getFactoryContext();
     if (!factoryId || currentUserRole !== 'Sahip') {
@@ -26,11 +26,12 @@ export async function createEmployee(prevState: any, formData: FormData) {
       const newUser = await client.users.createUser({ username, password });
       await db.insert(employees).values({ clerkUserId: newUser.id, factoryOwnerId: factoryId, username, role });
       revalidatePath('/dashboard/employees');
-      return { success: true };
-    } catch (clerkError: any) {
+      return { success: true, error: null };
+    } catch (clerkError: unknown) {
       console.error('Clerk Create User Error:', clerkError);
       
-      const firstError = clerkError.errors?.[0];
+      const errorObj = clerkError as { errors?: Array<{ code: string; longMessage?: string; message?: string }> };
+      const firstError = errorObj.errors?.[0];
       let message = 'Kullanıcı oluşturulurken bir hata oluştu.';
 
       if (firstError) {
@@ -45,11 +46,11 @@ export async function createEmployee(prevState: any, formData: FormData) {
         }
       }
 
-      return { error: message };
+      return { error: message, success: false };
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Create Employee System Error:', error);
-    return { error: 'Sistem hatası oluştu.' };
+    return { error: 'Sistem hatası oluştu.', success: false };
   }
 }
 
