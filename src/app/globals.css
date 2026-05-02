@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 142 71% 45%;
+    --primary-foreground: 144.9 80.4% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 142 71% 45%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground;
+    background-color: #09090b;
+    background-image: 
+      linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 50px 50px;
+    background-attachment: fixed;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-black/40 backdrop-blur-xl border border-white/10 shadow-[0_0_15px_rgba(0,0,0,0.5)];
+  }
+  .neon-border {
+    @apply border border-transparent shadow-[0_0_10px_rgba(74,222,128,0.2)] transition-all duration-300;
+  }
+  .neon-border:hover {
+    @apply border-[#4ade80] shadow-[0_0_20px_rgba(74,222,128,0.5)];
+  }
+  .neon-blue-border {
+    @apply border border-transparent shadow-[0_0_10px_rgba(56,189,248,0.2)] transition-all duration-300;
+  }
+  .neon-blue-border:hover {
+    @apply border-[#38bdf8] shadow-[0_0_20px_rgba(56,189,248,0.5)];
+  }
+  .neon-text-green {
+    @apply text-[#4ade80] drop-shadow-[0_0_8px_rgba(74,222,128,0.8)];
+  }
+  .neon-text-blue {
+    @apply text-[#38bdf8] drop-shadow-[0_0_8px_rgba(56,189,248,0.8)];
+  }
+}
