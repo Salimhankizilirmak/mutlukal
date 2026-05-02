@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { devices, batches } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { action, deviceSecret, reportData, targetDeviceId, batchId } = body;
+  const { action, deviceSecret, targetDeviceId, batchId } = body;
 
   const device = await db.select().from(devices).where(eq(devices.pinCode, deviceSecret)).limit(1); // Basit auth
   if (!device.length) return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 });
