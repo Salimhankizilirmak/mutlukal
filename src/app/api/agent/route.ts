@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   // RAPOR YÜKLEME — importBatches tablosunu güncelle
   if (action === 'upload_report') {
     await db.update(importBatches)
-      .set({ status: 'completed' })
+      .set({ status: 'completed', updatedAt: new Date() })
       .where(eq(importBatches.id, batchId));
     return NextResponse.json({ success: true });
   }

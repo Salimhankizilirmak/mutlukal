@@ -21,9 +21,13 @@ export default async function ReportsPage() {
         deviceIds.map(id =>
           db.select().from(importBatches)
             .where(and(eq(importBatches.deviceId, id), eq(importBatches.status, 'completed')))
-            .orderBy(desc(importBatches.createdAt))
+            .orderBy(desc(importBatches.updatedAt))
         )
-      )).flat().sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))
+      )).flat().sort((a, b) => {
+        const dateA = a.updatedAt || a.createdAt || new Date(0);
+        const dateB = b.updatedAt || b.createdAt || new Date(0);
+        return dateB.getTime() - dateA.getTime();
+      })
     : [];
 
   return (

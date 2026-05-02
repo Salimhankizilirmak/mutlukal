@@ -31,6 +31,7 @@ export const importBatches = sqliteTable('importBatches', {
   status: text('status').notNull().default('pending'),
   fileSize: integer('fileSize').notNull(),
   createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  updatedAt: integer('updatedAt', { mode: 'timestamp' }),
 });
 
 export const batches = sqliteTable('batches', {

@@ -32,6 +32,7 @@ export async function createBatchRecord({ deviceId, workOrderNo, fileUrl, fileSi
     workOrderNo,
     fileUrl: publicUrl,
     status: 'pending',
-    fileSize
+    fileSize,
+    createdAt: new Date()
   });
 }
