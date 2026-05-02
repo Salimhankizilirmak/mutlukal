@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { devices, importBatches } from '@/db/schema';
+import { devices, importBatches, productionReports } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, uploadUrl, reportUrl: publicUrl });
   }
 
-  // 2. ADIM: RAPOR YÜKLEME TAMAMLANDI — importBatches tablosunu güncelle
+  // 2. ADIM: RAPOR YÜKLEME TAMAMLANDI — productionReports tablosuna ekle
   if (action === 'upload_report') {
     let targetBatchId = batchId;
     
@@ -43,12 +43,18 @@ export async function POST(req: Request) {
 
     if (!targetBatchId) return NextResponse.json({ success: false, message: 'Aktif iş emri yok.' });
 
+    // Yeni rapor kaydı oluştur
+    await db.insert(productionReports).values({
+      id: uuidv4(),
+      batchId: targetBatchId,
+      fileName: fileName || 'rapor.xlsx',
+      fileUrl: reportUrl,
+      createdAt: new Date()
+    });
+
+    // İş emrini de tamamlandı olarak işaretle (isteğe bağlı, ama iş akışı için mantıklı)
     await db.update(importBatches)
-      .set({ 
-        status: 'completed', 
-        reportUrl: reportUrl, // Ajanın gönderdiği S3 linkini kaydet
-        updatedAt: new Date() 
-      })
+      .set({ status: 'completed', updatedAt: new Date() })
       .where(eq(importBatches.id, targetBatchId));
       
     return NextResponse.json({ success: true, message: 'Rapor başarıyla kaydedildi.' });

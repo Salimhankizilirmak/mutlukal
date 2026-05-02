@@ -34,6 +34,14 @@ export const importBatches = sqliteTable('importBatches', {
   updatedAt: integer('updatedAt', { mode: 'timestamp' }),
 });
 
+export const productionReports = sqliteTable('productionReports', {
+  id: text('id').primaryKey(),
+  batchId: text('batchId').notNull().references(() => importBatches.id),
+  fileName: text('fileName').notNull(),
+  fileUrl: text('fileUrl').notNull(),
+  createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+});
+
 export const batches = sqliteTable('batches', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   workOrderNo: text('workOrderNo').notNull(),
