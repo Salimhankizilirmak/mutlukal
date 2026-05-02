@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Download, RefreshCw, X, Loader2, FileDown, FileJson } from 'lucide-react';
 import { getBatchDownloadUrl } from '@/actions/batch';
+import * as XLSX from 'xlsx';
 
 interface ConvertModalProps {
   workOrderNo: string;
@@ -22,32 +23,64 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
     if (!file) { setError('Lütfen rapor dosyasını seçin.'); return; }
     setError(''); setSuccess(''); setLoading(true);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('orderNo', orderNo);
-      fd.append('gtin', gtin);
-      fd.append('productName', productName);
-      fd.append('productionDate', productionDate);
+      // CLIENT-SIDE PARSING (Vercel limitlerini aşmak için)
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
 
-      const res = await fetch('/api/convert', { method: 'POST', body: fd });
+      // "Aksiyonlar" veya benzeri sheet'i bul
+      const aksiyonlarSheet = wb.SheetNames.find(s =>
+        s.toLowerCase().includes('aksiyon') || s.toLowerCase().includes('action') || s.toLowerCase().includes('kod')
+      ) || wb.SheetNames[wb.SheetNames.length - 1];
 
-      if (!res.ok) {
-        const err = await res.json();
-        setError(err.error || 'Dönüştürme başarısız.');
-        return;
+      const ws = wb.Sheets[aksiyonlarSheet];
+      const data: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) as string[][];
+
+      if (!data || data.length < 2) {
+        throw new Error(`"${aksiyonlarSheet}" sayfasında veri bulunamadı.`);
       }
 
-      const disposition = res.headers.get('Content-Disposition') || '';
-      let fileName = 'sevkiyat.csv';
-      const match = disposition.match(/filename\*=UTF-8''(.+)/);
-      if (match) fileName = decodeURIComponent(match[1]);
+      // Header satırını bul
+      const headerRow = data[0];
+      const statusColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('durum') || String(h).toLowerCase().includes('status'));
+      const barcodeColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('barkod') || String(h).toLowerCase().includes('kod') && !String(h).toLowerCase().includes('durum'));
+      
+      const barcodeIdx = barcodeColIdx >= 0 ? barcodeColIdx : 1;
 
-      const blob = await res.blob();
+      // Success olan markalama kodlarını çek
+      const markalamaCodes: string[] = [];
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        if (!row || !row[barcodeIdx]) continue;
+        
+        const status = statusColIdx >= 0 ? String(row[statusColIdx] || '').toLowerCase() : 'success';
+        if (status === 'success' || statusColIdx < 0) {
+          const code = String(row[barcodeIdx]);
+          if (code.startsWith('01')) {
+            markalamaCodes.push(code);
+          }
+        }
+      }
+
+      if (markalamaCodes.length === 0) {
+        throw new Error('Uygun markalama kodu bulunamadı. "Aksiyonlar" sayfasında "success" durumlu kayıt var mı?');
+      }
+
+      // CSV oluştur (UTF-8 BOM'suz)
+      const csvContent = markalamaCodes.join('\n');
+      const quantity = markalamaCodes.length;
+      const dateStr = productionDate || new Date().toLocaleDateString('tr-TR').replace(/\./g, '.');
+      const fileName = `${orderNo}, ${gtin}, ${quantity}, ${productName}, ${dateStr}.csv`;
+
+      // İndirmeyi başlat
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = fileName;
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a); URL.revokeObjectURL(url);
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
 
       setSuccess(`✔ "${fileName}" oluşturuldu!`);
     } catch (e: unknown) {
@@ -168,7 +201,7 @@ export default function ReportActions({ workOrderNo, downloadUrl, reportUrl }: R
           className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 text-[11px] font-bold px-3 py-2 rounded-lg transition-all border border-zinc-700"
         >
           {dlJob ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
-          Saf Halini İndir
+          İş Emrini İndir
         </button>
 
         {/* DÖNÜŞTÜR */}
