@@ -3,6 +3,7 @@ import { importBatches, devices } from '@/db/schema';
 import { auth } from '@clerk/nextjs/server';
 import { eq, and, desc } from 'drizzle-orm';
 import { FileText } from 'lucide-react';
+import ReportActions from '@/components/ReportActions';
 
 export default async function ReportsPage() {
   const { userId } = await auth();
@@ -25,9 +26,12 @@ export default async function ReportsPage() {
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 flex items-center gap-3 mb-8">
+      <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 flex items-center gap-3 mb-2">
         <FileText className="text-blue-500" /> Üretim Raporları
       </h1>
+      <p className="text-zinc-500 text-sm mb-8">
+        Tamamlanan iş emirlerini indirin veya Çestniy Znak sevkiyat formatına dönüştürün.
+      </p>
 
       <div className="bg-[#18181b]/80 border border-zinc-800 rounded-2xl overflow-hidden shadow-[0_0_20px_rgba(0,0,0,0.3)]">
         <div className="overflow-x-auto">
@@ -45,6 +49,7 @@ export default async function ReportsPage() {
                 <tr key={batch.id} className="hover:bg-zinc-800/20 transition-all">
                   <td className="px-6 py-5">
                     <div className="font-mono text-emerald-400 font-bold">{batch.workOrderNo}</div>
+                    <div className="text-[10px] text-zinc-600 mt-0.5 font-mono">{batch.id.substring(0, 16)}...</div>
                   </td>
                   <td className="px-6 py-5 text-zinc-400 text-sm">
                     {devicesMap[batch.deviceId] || batch.deviceId}
@@ -53,9 +58,10 @@ export default async function ReportsPage() {
                     {batch.createdAt?.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
                   </td>
                   <td className="px-6 py-5 text-right">
-                    <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full font-medium">
-                      <FileText size={12} /> Rapor Alındı
-                    </span>
+                    <ReportActions
+                      workOrderNo={batch.workOrderNo}
+                      fileUrl={batch.reportUrl ?? null}
+                    />
                   </td>
                 </tr>
               ))}

@@ -27,6 +27,7 @@ export const importBatches = sqliteTable('importBatches', {
   deviceId: text('deviceId').notNull().references(() => devices.id),
   workOrderNo: text('workOrderNo').notNull(),
   fileUrl: text('fileUrl').notNull(),
+  reportUrl: text('reportUrl'),
   status: text('status').notNull().default('pending'),
   fileSize: integer('fileSize').notNull(),
   createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
