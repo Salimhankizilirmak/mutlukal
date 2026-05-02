@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
-import { Download, RefreshCw, X, Check } from 'lucide-react';
+import { Download, RefreshCw, X, Check, Loader2 } from 'lucide-react';
+import { getBatchDownloadUrl } from '@/actions/batch';
 
 interface ConvertModalProps {
   batchId: string;
@@ -132,18 +133,35 @@ interface ReportActionsProps {
 
 export default function ReportActions({ workOrderNo, downloadUrl }: ReportActionsProps) {
   const [showModal, setShowModal] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const signedUrl = await getBatchDownloadUrl(downloadUrl);
+      if (signedUrl) {
+        window.open(signedUrl, '_blank');
+      } else {
+        alert('İndirme linki oluşturulamadı.');
+      }
+    } catch {
+      alert('İndirme hatası.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <>
       <div className="flex justify-end gap-2">
-        <a
-          href={downloadUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition-all shadow-[0_0_10px_rgba(5,150,105,0.2)]"
+        <button
+          onClick={handleDownload}
+          disabled={downloading}
+          className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold px-3 py-2 rounded-lg transition-all shadow-[0_0_10px_rgba(5,150,105,0.2)]"
         >
-          <Download size={13} /> İndir
-        </a>
+          {downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+          İndir
+        </button>
         <button
           onClick={() => setShowModal(true)}
           className="flex items-center gap-1.5 bg-amber-600/20 border border-amber-500/40 hover:bg-amber-600 hover:text-white text-amber-400 text-xs font-bold px-3 py-2 rounded-lg transition-all"
