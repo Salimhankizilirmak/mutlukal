@@ -265,23 +265,58 @@ class LavasAgent(ctk.CTk):
 
         def do_upload():
             try:
-                with open(file_path, "rb") as f:
-                    res = requests.post(API_URL, json={
-                        "action": "upload_report",
-                        "deviceSecret": self.config["deviceSecret"],
-                        "batchId": self.current_batch_id,
-                        "fileName": file_name
-                    }, timeout=30)
+                # 1. Sunucudan yükleme URL'i al
+                url_res = requests.post(API_URL, json={
+                    "action": "get_report_upload_url",
+                    "deviceSecret": self.config["deviceSecret"],
+                    "fileName": file_name
+                }, timeout=15)
+                
+                if url_res.status_code != 200:
+                    self.after(0, lambda: messagebox.showerror("Hata", "Yükleme URL'i alınamadı."))
+                    return
+                
+                url_data = url_res.json()
+                if not url_data.get("success"):
+                    self.after(0, lambda: messagebox.showerror("Hata", url_data.get("message", "URL hatası.")))
+                    return
+                
+                upload_url = url_data["uploadUrl"]
+                report_url = url_data["reportUrl"]
 
-                if res.status_code == 200:
-                    self.after(0, lambda: messagebox.showinfo("Başarılı", f"'{file_name}' merkeze iletildi!\nİş emri Tamamlandı olarak işaretlendi."))
+                # 2. S3'e doğrudan yükle
+                self.after(0, lambda: self.log("Dosya buluta aktarılıyor..."))
+                with open(file_path, "rb") as f:
+                    s3_res = requests.put(upload_url, data=f, headers={
+                        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    }, timeout=60)
+                
+                if s3_res.status_code != 200:
+                    self.after(0, lambda: messagebox.showerror("Hata", "Bulut yükleme hatası."))
+                    return
+
+                # 3. Yüklemeyi sunucuya onayla
+                self.after(0, lambda: self.log("Rapor kaydediliyor..."))
+                confirm_res = requests.post(API_URL, json={
+                    "action": "upload_report",
+                    "deviceSecret": self.config["deviceSecret"],
+                    "batchId": self.current_batch_id,
+                    "reportUrl": report_url,
+                    "fileName": file_name
+                }, timeout=15)
+
+                if confirm_res.status_code == 200 and confirm_res.json().get("success"):
+                    self.after(0, lambda: messagebox.showinfo("Başarılı", f"'{file_name}' merkeze iletildi!"))
                     self.after(0, lambda: self.log(f"Rapor iletildi: {file_name}"))
                     self.after(0, lambda: self.lbl_status.configure(text="🟢  RAPOR GÖNDERİLDİ", text_color="#10b981"))
                     self.current_batch_id = None
                 else:
-                    self.after(0, lambda: messagebox.showerror("Hata", f"Sunucu hatası: {res.status_code}"))
+                    msg = confirm_res.json().get("message", "Sunucu raporu onaylamadı.")
+                    self.after(0, lambda: messagebox.showerror("Hata", msg))
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror("Bağlantı Hatası", str(e)))
+                self.after(0, lambda: messagebox.showerror("Hata", f"İşlem sırasında hata: {e}"))
+            finally:
+                self.after(0, lambda: self.btn_report.configure(state="normal", text="📤  RAPORU SEÇ VE GÖNDER"))
 
         threading.Thread(target=do_upload, daemon=True).start()
 

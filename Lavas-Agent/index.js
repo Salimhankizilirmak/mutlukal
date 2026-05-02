@@ -225,44 +225,29 @@ async function uploadReport(input) {
   const reader = new FileReader();
   reader.onload = async (e) => {
     try {
-      // 1. Sunucudan yükleme URL'i al
-      const urlRes = await fetch('/api/report-url', {
+      log('Dosya merkeze aktarılıyor...');
+      const res = await fetch('/api/report-process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: file.name })
+        body: JSON.stringify({ 
+          fileName: file.name, 
+          base64: e.target.result.split(',')[1],
+          batchId: currentBatchId 
+        })
       });
-      const urlData = await urlRes.json();
-      if (!urlData.success) throw new Error(urlData.message || 'Yükleme URL&#39;i alınamadı.');
+      const data = await res.json();
 
-      // 2. S3'e doğrudan yükle
-      log('Dosya buluta aktarılıyor...');
-      const uploadRes = await fetch(urlData.uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
-        body: file
-      });
-      if (!uploadRes.ok) throw new Error('S3 yükleme hatası.');
-
-      // 3. Yüklemeyi sunucuya onayla
-      log('Rapor kaydediliyor...');
-      const confirmRes = await fetch('/api/report-confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batchId: currentBatchId, reportUrl: urlData.reportUrl })
-      });
-      const confirmData = await confirmRes.json();
-
-      if (confirmData.success) {
+      if (data.success) {
         log('✔ Rapor iletildi: ' + file.name, '#10b981');
         currentBatchId = null;
       } else {
-        log('✖ ' + confirmData.message, '#ef4444');
+        log('✖ ' + data.message, '#ef4444');
       }
     } catch (err) {
-      log('✖ Hata: ' + err.message, '#ef4444');
+      log('✖ Bağlantı hatası: ' + err.message, '#ef4444');
     }
   };
-  reader.readAsArrayBuffer(file);
+  reader.readAsDataURL(file);
 }
 
 function openFolder() { fetch('/api/open-folder'); }
@@ -360,34 +345,41 @@ app.post('/api/download', async (req, res) => {
     }
 });
 
-app.post('/api/report-url', async (req, res) => {
+app.post('/api/report-process', async (req, res) => {
     if (!config) return res.json({ success: false, message: 'Cihaz kayıtlı değil.' });
-    const { fileName } = req.body;
+    const { fileName, base64, batchId } = req.body;
+    
     try {
-        const apiRes = await axios.post(API_BASE_URL, {
+        // 1. Buluttan yükleme adresi al
+        const urlRes = await axios.post(API_BASE_URL, {
             action: 'get_report_upload_url',
             deviceSecret: config.deviceSecret,
             fileName
         }, { timeout: 10000 });
-        res.json(apiRes.data);
-    } catch (e) {
-        res.json({ success: false, message: 'URL alınamadı: ' + e.message });
-    }
-});
+        
+        if (!urlRes.data?.success) throw new Error(urlRes.data?.message || 'URL alınamadı.');
+        const { uploadUrl, reportUrl } = urlRes.data;
 
-app.post('/api/report-confirm', async (req, res) => {
-    if (!config) return res.json({ success: false, message: 'Cihaz kayıtlı değil.' });
-    const { batchId, reportUrl } = req.body;
-    try {
-        const apiRes = await axios.post(API_BASE_URL, {
+        // 2. S3'e yükle (Backend'den olduğu için CORS engeline takılmaz)
+        const buffer = Buffer.from(base64, 'base64');
+        await axios.put(uploadUrl, buffer, {
+            headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+            timeout: 60000
+        });
+
+        // 3. Buluta onayla
+        const confirmRes = await axios.post(API_BASE_URL, {
             action: 'upload_report',
             deviceSecret: config.deviceSecret,
             batchId,
-            reportUrl
+            reportUrl,
+            fileName
         }, { timeout: 10000 });
-        res.json(apiRes.data);
+
+        res.json(confirmRes.data);
     } catch (e) {
-        res.json({ success: false, message: 'Onay hatası: ' + e.message });
+        console.error('Report Process Error:', e.message);
+        res.json({ success: false, message: 'Rapor yükleme hatası: ' + e.message });
     }
 });
 
