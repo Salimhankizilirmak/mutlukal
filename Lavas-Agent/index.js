@@ -10,24 +10,13 @@ app.use(express.json());
 
 const API_BASE_URL = "http://localhost:3000/api/agent"; 
 
-function getDesktopDir() {
-    const homedir = require('os').homedir();
-    const pathsToTry = [
-        path.join(homedir, 'Desktop'),
-        path.join(homedir, 'Masaüstü'),
-        path.join(homedir, 'OneDrive', 'Desktop'),
-        path.join(homedir, 'OneDrive', 'Masaüstü')
-    ];
-    for (let p of pathsToTry) {
-        if (fs.existsSync(p)) return p;
-    }
-    return homedir; // Bulunamazsa direkt kullanıcı dizinine at
-}
+// pkg ile derlendiğinde process.execPath bize .exe'nin kendi yolunu verir.
+// Böylece exe neredeyse (Masaüstü, İndirilenler vb.) klasörler onun yanına açılır.
+const BASE_DIR = process.pkg ? path.dirname(process.execPath) : process.cwd();
 
-const DESKTOP_DIR = getDesktopDir();
-const CONFIG_FILE = path.join(DESKTOP_DIR, 'Lavas_Config.json');
-const IS_EMRI_DIR = path.join(DESKTOP_DIR, 'Is_Emri');
-const ARSIV_DIR = path.join(DESKTOP_DIR, 'Arsiv');
+const CONFIG_FILE = path.join(BASE_DIR, 'Lavas_Config.json');
+const IS_EMRI_DIR = path.join(BASE_DIR, 'Is_Emri');
+const ARSIV_DIR = path.join(BASE_DIR, 'Arsiv');
 
 [IS_EMRI_DIR, ARSIV_DIR].forEach(dir => { 
     if (!fs.existsSync(dir)) {
