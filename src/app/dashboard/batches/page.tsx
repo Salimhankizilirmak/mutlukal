@@ -1,18 +1,33 @@
-import { getDevices } from '@/actions/dashboard';
 import BatchForm from '@/components/BatchForm';
 import { SendToBack, Clock, CheckCircle2 } from 'lucide-react';
 import { db } from '@/db';
-import { batches } from '@/db/schema';
+import { importBatches } from '@/db/schema';
 import { auth } from '@clerk/nextjs/server';
+import { devices } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 
 export default async function BatchesPage() {
   const { userId } = await auth();
-  const devices = await getDevices();
-  const existingBatches = await db.select()
-    .from(batches)
-    .where(eq(batches.factoryOwnerId, userId!))
-    .orderBy(desc(batches.createdAt));
+  const devices_list = await db.query.devices.findMany({
+    where: eq(devices.factoryOwnerId, userId!)
+  });
+  const deviceIds = devices_list.map(d => d.id);
+
+
+  const allBatches = await Promise.all(
+    deviceIds.map(id =>
+      db.select().from(importBatches)
+        .where(eq(importBatches.deviceId, id))
+        .orderBy(desc(importBatches.createdAt))
+    )
+  );
+  const sortedBatches = allBatches.flat().sort((a, b) => {
+    const ta = a.createdAt?.getTime() ?? 0;
+    const tb = b.createdAt?.getTime() ?? 0;
+    return tb - ta;
+  });
+
+  const devicesMap = Object.fromEntries(devices_list.map(d => [d.id, d.name]));
   
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-12">
@@ -20,7 +35,7 @@ export default async function BatchesPage() {
         <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 flex items-center gap-3 mb-8">
           <SendToBack className="text-emerald-500" /> İş Emri (Batch) Gönderimi
         </h1>
-        <BatchForm devices={devices} />
+        <BatchForm devices={devices_list} />
       </div>
 
       <div className="bg-[#18181b]/80 border border-zinc-800 rounded-2xl overflow-hidden shadow-[0_0_15px_rgba(0,0,0,0.2)]">
@@ -38,10 +53,10 @@ export default async function BatchesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
-              {existingBatches.map((batch) => (
+              {sortedBatches.map((batch) => (
                 <tr key={batch.id} className="hover:bg-zinc-800/20 transition-colors">
                   <td className="px-6 py-4 font-mono text-emerald-400">{batch.workOrderNo}</td>
-                  <td className="px-6 py-4 text-zinc-400 text-sm">{batch.deviceId}</td>
+                  <td className="px-6 py-4 text-zinc-400 text-sm">{devicesMap[batch.deviceId] || batch.deviceId}</td>
                   <td className="px-6 py-4 text-zinc-500 text-xs">
                     {batch.createdAt?.toLocaleDateString('tr-TR')} {batch.createdAt?.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                   </td>
@@ -58,7 +73,7 @@ export default async function BatchesPage() {
                   </td>
                 </tr>
               ))}
-              {existingBatches.length === 0 && (
+              {sortedBatches.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-6 py-12 text-center text-zinc-500 italic">Henüz iş emri bulunmuyor.</td>
                 </tr>
