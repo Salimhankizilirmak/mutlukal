@@ -69,7 +69,7 @@ export async function POST(req: Request) {
 
   // CİHAZLARI GETİR (Aktarım için)
   if (action === 'get_devices') {
-    const allDevices = await db.select().from(devices).where(eq(devices.factoryOwnerId, device[0].factoryOwnerId));
+    const allDevices = await db.select().from(devices).where(eq(devices.orgId, device[0].orgId));
     return NextResponse.json(allDevices.filter(d => d.id !== device[0].id));
   }
 
