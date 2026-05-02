@@ -1,5 +1,12 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 
+export const companies = sqliteTable('companies', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  ownerId: text('owner_id').notNull().unique(),
+  name: text('name').notNull(),
+  logoUrl: text('logo_url'),
+});
+
 export const productionLines = sqliteTable('productionLines', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),

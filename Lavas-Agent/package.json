@@ -1,0 +1,1 @@
+{"name":"lavas-agent","version":"1.0.0","main":"index.js","dependencies":{"axios":"^1.15.2","node-notifier":"^10.0.1"}}
