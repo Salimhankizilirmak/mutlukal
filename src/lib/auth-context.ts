@@ -4,7 +4,7 @@ import { companies, employees } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
 export async function getFactoryContext() {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) throw new Error('Yetkisiz');
 
   // 1. Kullanıcı Fabrika Sahibi mi?
