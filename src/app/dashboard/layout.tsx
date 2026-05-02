@@ -2,7 +2,7 @@ import { isSuperAdmin } from '@/lib/roles';
 import { getFactoryContext } from '@/lib/auth-context';
 import { UserButton, OrganizationSwitcher } from '@clerk/nextjs';
 import Link from 'next/link';
-import { Activity, MonitorDot, SendToBack, ShieldAlert, Factory, FileText, Users } from 'lucide-react';
+import { Activity, MonitorDot, SendToBack, ShieldAlert, FileText, Users } from 'lucide-react';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const isAdmin = await isSuperAdmin();
