@@ -5,7 +5,7 @@ import { eq, and, desc } from 'drizzle-orm';
 import { FileText, Download, ExternalLink } from 'lucide-react';
 
 export default async function ReportsPage() {
-  const { userId } = auth();
+  const { userId } = await auth();
   
   const completedBatches = await db.select()
     .from(batches)

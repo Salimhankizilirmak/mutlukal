@@ -7,7 +7,7 @@ import { auth } from '@clerk/nextjs/server';
 import { eq, desc } from 'drizzle-orm';
 
 export default async function BatchesPage() {
-  const { userId } = auth();
+  const { userId } = await auth();
   const devices = await getDevices();
   const existingBatches = await db.select()
     .from(batches)
