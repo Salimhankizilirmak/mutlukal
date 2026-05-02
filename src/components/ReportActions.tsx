@@ -15,19 +15,37 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
   const [gtin, setGtin] = useState('');
   const [productName, setProductName] = useState('');
   const [productionDate, setProductionDate] = useState('');
+  const [itemsPerCarton, setItemsPerCarton] = useState('30');
+  const [cartonsPerPallet, setCartonsPerPallet] = useState('84');
+  const [startingSerial, setStartingSerial] = useState('1000000');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  const calculateCheckDigit = (number: string) => {
+    const digits = number.split('').map(Number);
+    let total = 0;
+    const reverse = digits.reverse();
+    for (let i = 0; i < reverse.length; i++) {
+      if (i % 2 === 0) total += reverse[i] * 3;
+      else total += reverse[i];
+    }
+    return (10 - (total % 10)) % 10;
+  };
+
+  const generateSSCC = (extension: string, gln: string, serial: number) => {
+    const serialStr = String(serial).padStart(7, '0');
+    const base = extension + gln + serialStr;
+    const check = calculateCheckDigit(base);
+    return base + check; // (00) prefix removed as requested
+  };
 
   const handleConvert = async () => {
     if (!file) { setError('Lütfen rapor dosyasını seçin.'); return; }
     setError(''); setSuccess(''); setLoading(true);
     try {
-      // CLIENT-SIDE PARSING
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: 'array' });
-
-      // "Aksiyonlar" veya benzeri sheet'i bul
       const aksiyonlarSheet = wb.SheetNames.find(s =>
         s.toLowerCase().includes('aksiyon') || s.toLowerCase().includes('action') || s.toLowerCase().includes('kod')
       ) || wb.SheetNames[wb.SheetNames.length - 1];
@@ -35,70 +53,67 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
       const ws = wb.Sheets[aksiyonlarSheet];
       const data: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) as string[][];
 
-      if (!data || data.length < 2) {
-        throw new Error(`"${aksiyonlarSheet}" sayfasında veri bulunamadı.`);
-      }
+      if (!data || data.length < 2) throw new Error(`"${aksiyonlarSheet}" sayfasında veri bulunamadı.`);
 
-      // Yardımcı fonksiyon: (00) temizleme
-      const cleanCode = (c: string | number | null | undefined) => {
-        if (!c) return '';
-        let s = String(c).trim();
-        if (s.startsWith('(00)')) s = s.substring(4);
-        return s;
-      };
-
-      // Kolonları bul
       const headerRow = data[0];
-      const statusColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('durum') || String(h).toLowerCase().includes('status'));
       const barcodeColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('barkod') || String(h).toLowerCase().includes('kod') && !String(h).toLowerCase().includes('koli') && !String(h).toLowerCase().includes('palet'));
-      const koliColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('koli') || String(h).toLowerCase().includes('case') || String(h).toLowerCase().includes('agg'));
-      const paletColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('palet') || String(h).toLowerCase().includes('pallet') || String(h).toLowerCase().includes('sscc'));
-      
       const barcodeIdx = barcodeColIdx >= 0 ? barcodeColIdx : 1;
 
-      // Verileri işle
-      const csvLines: string[] = [];
-      let quantity = 0;
-
+      // Sadece 01 ile başlayan Marka kodlarını al
+      const markalar: string[] = [];
       for (let i = 1; i < data.length; i++) {
-        const row = data[i];
-        if (!row || !row[barcodeIdx]) continue;
-        
-        const status = statusColIdx >= 0 ? String(row[statusColIdx] || '').toLowerCase() : 'success';
-        
-        // Sadece başarılı olanları (veya durumu olmayanları) alıyoruz
-        if (status === 'success' || statusColIdx < 0) {
-          const km = cleanCode(row[barcodeIdx]);
-          const koli = koliColIdx >= 0 ? cleanCode(row[koliColIdx]) : '';
-          const palet = paletColIdx >= 0 ? cleanCode(row[paletColIdx]) : '';
-          
-          if (km.startsWith('01')) {
-            // FORMAT: Marka [TAB] Koli [TAB] Palet
-            csvLines.push(`${km}\t${koli}\t${palet}`);
-            quantity++;
-          }
+        const val = String(data[i][barcodeIdx] || '').trim();
+        if (val.startsWith('01') || val.startsWith('(01)')) {
+          // (01) veya (00) varsa temizle (genel temizlik)
+          let cleaned = val;
+          if (cleaned.startsWith('(01)')) cleaned = cleaned.substring(4);
+          if (cleaned.startsWith('(00)')) cleaned = cleaned.substring(4);
+          markalar.push(cleaned);
         }
       }
 
-      if (csvLines.length === 0) {
-        throw new Error('Uygun markalama kodu bulunamadı. "Aksiyonlar" sayfasında kayıt var mı?');
+      if (markalar.length === 0) throw new Error('Geçerli markalama kodu (01...) bulunamadı.');
+
+      // SSCC GENERATION LOGIC (Python script reference)
+      const GLN = "869882938";
+      const EXTENSION = "2";
+      const ipc = parseInt(itemsPerCarton) || 30;
+      const cpp = parseInt(cartonsPerPallet) || 84;
+      let serial = parseInt(startingSerial) || 1000000;
+
+      const csvLines: string[] = [];
+      let currentKoliSSCC = "";
+      let currentPaletSSCC = "";
+
+      for (let i = 0; i < markalar.length; i++) {
+        const isNewKoli = i % ipc === 0;
+        const cartonNo = Math.floor(i / ipc) + 1;
+        const isNewPalet = isNewKoli && ((cartonNo - 1) % cpp === 0);
+
+        if (isNewKoli) {
+          if (isNewPalet) {
+            currentPaletSSCC = generateSSCC(EXTENSION, GLN, serial);
+            serial++;
+          }
+          currentKoliSSCC = generateSSCC(EXTENSION, GLN, serial);
+          serial++;
+        }
+
+        // FORMAT: Marka \t Koli \t Palet
+        csvLines.push(`${markalar[i]}\t${currentKoliSSCC}\t${currentPaletSSCC}`);
       }
 
-      // CSV oluştur (UTF-8 BOM'suz)
       const csvContent = csvLines.join('\n');
+      const quantity = markalar.length;
       const dateStr = productionDate || new Date().toLocaleDateString('tr-TR').replace(/\./g, '.');
       const fileName = `${orderNo}, GTIN, ${quantity}, ${productName}, ${dateStr}.csv`;
 
-      // İndirmeyi başlat
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      a.href = url; a.download = fileName;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
 
       setSuccess(`✔ "${fileName}" oluşturuldu!`);
     } catch (e: unknown) {
@@ -110,11 +125,11 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-[#18181b] border border-zinc-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between p-5 border-b border-zinc-800 bg-zinc-900/50">
+      <div className="bg-[#18181b] border border-zinc-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b border-zinc-800 bg-zinc-900/50 sticky top-0 z-10">
           <h2 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
             <FileJson size={18} className="text-amber-400" />
-            Çestniy Znak Dönüştürücü
+            Triton Sevkiyat Dönüştürücü (Python Mode)
           </h2>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors">
             <X size={20} />
@@ -154,13 +169,34 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
             </div>
           </div>
 
+          <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl space-y-4">
+             <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">Agregasyon Ayarları (SSCC)</p>
+             <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[9px] uppercase text-zinc-500 mb-1 block">Koli/Şişe</label>
+                  <input type="number" value={itemsPerCarton} onChange={e => setItemsPerCarton(e.target.value)}
+                    className="w-full bg-black/50 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200" />
+                </div>
+                <div>
+                  <label className="text-[9px] uppercase text-zinc-500 mb-1 block">Palet/Koli</label>
+                  <input type="number" value={cartonsPerPallet} onChange={e => setCartonsPerPallet(e.target.value)}
+                    className="w-full bg-black/50 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200" />
+                </div>
+                <div>
+                  <label className="text-[9px] uppercase text-zinc-500 mb-1 block">Seri No</label>
+                  <input type="number" value={startingSerial} onChange={e => setStartingSerial(e.target.value)}
+                    className="w-full bg-black/50 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200" />
+                </div>
+             </div>
+          </div>
+
           {error && <p className="text-red-400 text-[10px] bg-red-500/5 border border-red-500/10 rounded-lg px-3 py-2">{error}</p>}
           {success && <p className="text-emerald-400 text-[10px] bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2">{success}</p>}
 
           <button onClick={handleConvert} disabled={loading}
-            className="w-full bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all text-sm shadow-lg shadow-amber-900/20">
+            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all text-sm shadow-lg shadow-emerald-900/20">
             {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            Dönüştür ve İndir
+            Dönüştür ve İndir (.CSV)
           </button>
         </div>
       </div>
