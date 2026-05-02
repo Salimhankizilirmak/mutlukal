@@ -129,16 +129,20 @@ function ConvertModal({ workOrderNo, onClose }: Omit<ConvertModalProps, 'batchId
 interface ReportActionsProps {
   workOrderNo: string;
   downloadUrl: string;
+  reportUrl?: string | null;
 }
 
-export default function ReportActions({ workOrderNo, downloadUrl }: ReportActionsProps) {
+export default function ReportActions({ workOrderNo, downloadUrl, reportUrl }: ReportActionsProps) {
   const [showModal, setShowModal] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [reportDownloading, setReportDownloading] = useState(false);
 
-  const handleDownload = async () => {
-    setDownloading(true);
+  const handleDownload = async (url: string, isReport: boolean) => {
+    if (isReport) setReportDownloading(true);
+    else setDownloading(true);
+
     try {
-      const signedUrl = await getBatchDownloadUrl(downloadUrl);
+      const signedUrl = await getBatchDownloadUrl(url);
       if (signedUrl) {
         const a = document.createElement('a');
         a.href = signedUrl;
@@ -152,7 +156,8 @@ export default function ReportActions({ workOrderNo, downloadUrl }: ReportAction
     } catch {
       alert('İndirme hatası.');
     } finally {
-      setDownloading(false);
+      if (isReport) setReportDownloading(false);
+      else setDownloading(false);
     }
   };
 
@@ -160,13 +165,26 @@ export default function ReportActions({ workOrderNo, downloadUrl }: ReportAction
     <>
       <div className="flex justify-end gap-2">
         <button
-          onClick={handleDownload}
+          onClick={() => handleDownload(downloadUrl, false)}
           disabled={downloading}
-          className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold px-3 py-2 rounded-lg transition-all shadow-[0_0_10px_rgba(5,150,105,0.2)]"
+          title="Orijinal İş Emrini İndir"
+          className="flex items-center gap-1.5 bg-emerald-600/10 border border-emerald-500/30 hover:bg-emerald-600 text-emerald-400 hover:text-white text-xs font-bold px-3 py-2 rounded-lg transition-all"
         >
           {downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-          İndir
+          Saf Halini İndir
         </button>
+
+        {reportUrl && (
+          <button
+            onClick={() => handleDownload(reportUrl, true)}
+            disabled={reportDownloading}
+            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition-all shadow-[0_0_10px_rgba(37,99,235,0.3)]"
+          >
+            {reportDownloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            Raporu İndir
+          </button>
+        )}
+
         <button
           onClick={() => setShowModal(true)}
           className="flex items-center gap-1.5 bg-amber-600/20 border border-amber-500/40 hover:bg-amber-600 hover:text-white text-amber-400 text-xs font-bold px-3 py-2 rounded-lg transition-all"

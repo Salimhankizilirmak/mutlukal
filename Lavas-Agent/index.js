@@ -221,20 +221,48 @@ async function uploadReport(input) {
   if (!input.files[0]) return;
   const file = input.files[0];
   log('Rapor yükleniyor: ' + file.name);
+  
   const reader = new FileReader();
   reader.onload = async (e) => {
     try {
-      const res = await fetch('/api/report', {
+      // 1. Sunucudan yükleme URL'i al
+      const urlRes = await fetch('/api/report-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: file.name, base64: e.target.result, batchId: currentBatchId })
+        body: JSON.stringify({ fileName: file.name })
       });
-      const data = await res.json();
-      if (data.success) { log('✔ Rapor iletildi: ' + file.name, '#10b981'); currentBatchId = null; }
-      else { log('✖ ' + data.message, '#ef4444'); }
-    } catch { log('✖ Bağlantı hatası', '#ef4444'); }
+      const urlData = await urlRes.json();
+      if (!urlData.success) throw new Error(urlData.message || 'Yükleme URL&#39;i alınamadı.');
+
+      // 2. S3'e doğrudan yükle
+      log('Dosya buluta aktarılıyor...');
+      const uploadRes = await fetch(urlData.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+        body: file
+      });
+      if (!uploadRes.ok) throw new Error('S3 yükleme hatası.');
+
+      // 3. Yüklemeyi sunucuya onayla
+      log('Rapor kaydediliyor...');
+      const confirmRes = await fetch('/api/report-confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchId: currentBatchId, reportUrl: urlData.reportUrl })
+      });
+      const confirmData = await confirmRes.json();
+
+      if (confirmData.success) {
+        log('✔ Rapor iletildi: ' + file.name, '#10b981');
+        currentBatchId = null;
+      } else {
+        log('✖ ' + confirmData.message, '#ef4444');
+      }
+    } catch (err) {
+      log('✖ Hata: ' + err.message, '#ef4444');
+    }
   };
-  reader.readAsDataURL(file);
+  reader.readAsArrayBuffer(file);
 }
 
 function openFolder() { fetch('/api/open-folder'); }
@@ -332,24 +360,34 @@ app.post('/api/download', async (req, res) => {
     }
 });
 
-app.post('/api/report', async (req, res) => {
+app.post('/api/report-url', async (req, res) => {
     if (!config) return res.json({ success: false, message: 'Cihaz kayıtlı değil.' });
-    const { fileName, batchId } = req.body;
+    const { fileName } = req.body;
+    try {
+        const apiRes = await axios.post(API_BASE_URL, {
+            action: 'get_report_upload_url',
+            deviceSecret: config.deviceSecret,
+            fileName
+        }, { timeout: 10000 });
+        res.json(apiRes.data);
+    } catch (e) {
+        res.json({ success: false, message: 'URL alınamadı: ' + e.message });
+    }
+});
+
+app.post('/api/report-confirm', async (req, res) => {
+    if (!config) return res.json({ success: false, message: 'Cihaz kayıtlı değil.' });
+    const { batchId, reportUrl } = req.body;
     try {
         const apiRes = await axios.post(API_BASE_URL, {
             action: 'upload_report',
             deviceSecret: config.deviceSecret,
             batchId,
-            fileName
-        }, { timeout: 15000 });
-        if (apiRes.data?.success) {
-            notifier.notify({ title: 'Lavaş Trace', message: 'Rapor iletildi: ' + fileName, sound: true });
-            res.json({ success: true });
-        } else {
-            res.json({ success: false, message: 'Sunucu raporu kabul etmedi.' });
-        }
+            reportUrl
+        }, { timeout: 10000 });
+        res.json(apiRes.data);
     } catch (e) {
-        res.json({ success: false, message: 'Bağlantı hatası: ' + e.message });
+        res.json({ success: false, message: 'Onay hatası: ' + e.message });
     }
 });
 

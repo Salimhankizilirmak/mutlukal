@@ -67,6 +67,7 @@ export default async function ReportsPage() {
                     <ReportActions
                       workOrderNo={batch.workOrderNo}
                       downloadUrl={batch.fileUrl}
+                      reportUrl={batch.reportUrl ?? null}
                     />
                   </td>
                 </tr>
