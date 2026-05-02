@@ -46,14 +46,15 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
     try {
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: 'array' });
-      const aksiyonlarSheet = wb.SheetNames.find(s =>
+      const targetSheetName = wb.SheetNames.find(s =>
+        s.toLowerCase().includes('okunan') || s.toLowerCase().includes('read') || s.toLowerCase().includes('scan') ||
         s.toLowerCase().includes('aksiyon') || s.toLowerCase().includes('action') || s.toLowerCase().includes('kod')
-      ) || wb.SheetNames[wb.SheetNames.length - 1];
+      ) || wb.SheetNames[0];
 
-      const ws = wb.Sheets[aksiyonlarSheet];
+      const ws = wb.Sheets[targetSheetName];
       const data: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) as string[][];
 
-      if (!data || data.length < 2) throw new Error(`"${aksiyonlarSheet}" sayfasında veri bulunamadı.`);
+      if (!data || data.length < 2) throw new Error(`"${targetSheetName}" sayfasında veri bulunamadı.`);
 
       const headerRow = data[0];
       const barcodeColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('barkod') || String(h).toLowerCase().includes('kod') && !String(h).toLowerCase().includes('koli') && !String(h).toLowerCase().includes('palet'));
