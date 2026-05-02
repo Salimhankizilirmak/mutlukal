@@ -33,8 +33,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex min-h-screen bg-[#09090b]">
-      {/* Sidebar */}
-      <aside className="w-64 bg-[#18181b]/50 border-r border-zinc-800/50 backdrop-blur-xl flex flex-col">
+      {/* Sidebar (Desktop) */}
+      <aside className="hidden md:flex w-64 bg-[#18181b]/50 border-r border-zinc-800/50 backdrop-blur-xl flex-col">
         <div className="p-6 border-b border-zinc-800/50 flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.3)]">
             <span className="font-bold text-white text-lg">{displayName.charAt(0)}</span>
@@ -51,15 +51,23 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col">
-        <header className="h-16 border-b border-zinc-800/50 flex items-center justify-end px-8 bg-[#18181b]/30 backdrop-blur-sm">
+      <main className="flex-1 flex flex-col pb-20 md:pb-0 w-full max-w-full overflow-hidden">
+        <header className="h-16 border-b border-zinc-800/50 flex items-center justify-end px-4 md:px-8 bg-[#18181b]/30 backdrop-blur-sm shrink-0">
           <UserButton appearance={{ elements: { avatarBox: "w-10 h-10 ring-2 ring-zinc-800" } }} />
         </header>
-        <div className="flex-1 overflow-auto p-8 relative">
+        <div className="flex-1 overflow-auto p-4 md:p-8 relative">
           <div className="absolute top-0 left-0 w-full h-96 bg-emerald-500/5 blur-[120px] -z-10 rounded-full pointer-events-none"></div>
           {children}
         </div>
       </main>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#18181b]/95 backdrop-blur-xl border-t border-zinc-800/50 flex justify-around p-3 z-50">
+        <Link href="/dashboard/lines" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><Activity size={24} /><span className="text-[10px]">Hatlar</span></Link>
+        <Link href="/dashboard/devices" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><MonitorDot size={24} /><span className="text-[10px]">Cihazlar</span></Link>
+        <Link href="/dashboard/batches" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><SendToBack size={24} /><span className="text-[10px]">İş Emirleri</span></Link>
+        {isAdmin && <Link href="/dashboard/super-admin" className="flex flex-col items-center gap-1 text-amber-500 hover:text-amber-400"><ShieldAlert size={24} /><span className="text-[10px]">Admin</span></Link>}
+      </nav>
     </div>
   );
 }
