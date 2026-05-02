@@ -127,23 +127,27 @@ function ConvertModal({ workOrderNo, onClose }: Omit<ConvertModalProps, 'batchId
 
 interface ReportActionsProps {
   workOrderNo: string;
-  fileUrl: string | null;
+  downloadUrl: string;
 }
 
-export default function ReportActions({ workOrderNo, fileUrl }: ReportActionsProps) {
+export default function ReportActions({ workOrderNo, downloadUrl }: ReportActionsProps) {
   const [showModal, setShowModal] = useState(false);
 
   return (
     <>
       <div className="flex justify-end gap-2">
-        {fileUrl && (
-          <a href={fileUrl} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition-all shadow-[0_0_10px_rgba(37,99,235,0.2)]">
-            <Download size={13} /> İndir
-          </a>
-        )}
-        <button onClick={() => setShowModal(true)}
-          className="flex items-center gap-1.5 bg-amber-600/20 border border-amber-500/40 hover:bg-amber-600 hover:text-white text-amber-400 text-xs font-bold px-3 py-2 rounded-lg transition-all">
+        <a
+          href={downloadUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition-all shadow-[0_0_10px_rgba(5,150,105,0.2)]"
+        >
+          <Download size={13} /> İndir
+        </a>
+        <button
+          onClick={() => setShowModal(true)}
+          className="flex items-center gap-1.5 bg-amber-600/20 border border-amber-500/40 hover:bg-amber-600 hover:text-white text-amber-400 text-xs font-bold px-3 py-2 rounded-lg transition-all"
+        >
           <RefreshCw size={13} /> Dönüştür
         </button>
       </div>

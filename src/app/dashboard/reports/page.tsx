@@ -60,7 +60,7 @@ export default async function ReportsPage() {
                   <td className="px-6 py-5 text-right">
                     <ReportActions
                       workOrderNo={batch.workOrderNo}
-                      fileUrl={batch.reportUrl ?? null}
+                      downloadUrl={batch.fileUrl}
                     />
                   </td>
                 </tr>
