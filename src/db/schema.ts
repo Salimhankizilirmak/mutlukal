@@ -30,3 +30,14 @@ export const importBatches = sqliteTable('importBatches', {
   status: text('status').notNull().default('pending'),
   fileSize: integer('fileSize').notNull(),
 });
+
+export const batches = sqliteTable('batches', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  workOrderNo: text('workOrderNo').notNull(),
+  deviceId: text('deviceId').notNull(),
+  factoryOwnerId: text('factory_owner_id').notNull(),
+  fileUrl: text('fileUrl').notNull(),
+  reportUrl: text('reportUrl'),
+  status: text('status').default('pending'),
+  createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+});

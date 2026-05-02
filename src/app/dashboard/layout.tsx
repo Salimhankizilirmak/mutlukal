@@ -2,7 +2,7 @@ import { isSuperAdmin } from '@/lib/roles';
 import { getCompany, setupCompany } from '@/actions/company';
 import { UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
-import { Activity, MonitorDot, SendToBack, ShieldAlert, Factory } from 'lucide-react';
+import { Activity, MonitorDot, SendToBack, ShieldAlert, Factory, FileText } from 'lucide-react';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const isAdmin = await isSuperAdmin();
@@ -46,13 +46,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <Link href="/dashboard/lines" className="flex items-center gap-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/30 p-3 rounded-lg transition-all"><Activity size={20} /> Üretim Hatları</Link>
           <Link href="/dashboard/devices" className="flex items-center gap-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/30 p-3 rounded-lg transition-all"><MonitorDot size={20} /> Cihazlar</Link>
           <Link href="/dashboard/batches" className="flex items-center gap-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/30 p-3 rounded-lg transition-all"><SendToBack size={20} /> İş Emirleri</Link>
+          <Link href="/dashboard/reports" className="flex items-center gap-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/30 p-3 rounded-lg transition-all"><FileText size={20} /> Raporlar</Link>
           {isAdmin && <Link href="/dashboard/super-admin" className="flex items-center gap-3 text-amber-500 hover:bg-amber-500/10 p-3 rounded-lg transition-all mt-8 border border-amber-500/20"><ShieldAlert size={20} /> Süper Admin</Link>}
         </nav>
         
-        <div className="p-4 border-t border-zinc-800/50">
-          <a href="/downloads/Lavas_Agent.exe" download className="w-full bg-blue-600/20 border border-blue-500/50 hover:bg-blue-600 hover:text-white text-blue-400 font-semibold py-3 px-4 rounded-xl transition-all shadow-[0_0_15px_rgba(37,99,235,0.1)] flex items-center justify-center gap-2 text-sm text-center">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            Ajanı İndir (Windows)
+        <div className="p-4 border-t border-zinc-800/50 space-y-2">
+          <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold mb-2 text-center">Makine Ajanı İndir</p>
+          <a href="/downloads/Lavas_Agent.exe" download className="w-full bg-blue-600/20 border border-blue-500/40 hover:bg-blue-600 hover:text-white text-blue-400 font-semibold py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2 text-xs">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Windows Ajanı (.exe)
+          </a>
+          <a href="/downloads/gui_agent.py" download className="w-full bg-emerald-600/20 border border-emerald-500/40 hover:bg-emerald-600 hover:text-white text-emerald-400 font-semibold py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2 text-xs">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Masaüstü Arayüzü (.py)
           </a>
         </div>
       </aside>
@@ -73,6 +79,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <Link href="/dashboard/lines" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><Activity size={24} /><span className="text-[10px]">Hatlar</span></Link>
         <Link href="/dashboard/devices" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><MonitorDot size={24} /><span className="text-[10px]">Cihazlar</span></Link>
         <Link href="/dashboard/batches" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><SendToBack size={24} /><span className="text-[10px]">İş Emirleri</span></Link>
+        <Link href="/dashboard/reports" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><FileText size={24} /><span className="text-[10px]">Raporlar</span></Link>
         {isAdmin && <Link href="/dashboard/super-admin" className="flex flex-col items-center gap-1 text-amber-500 hover:text-amber-400"><ShieldAlert size={24} /><span className="text-[10px]">Admin</span></Link>}
       </nav>
     </div>
