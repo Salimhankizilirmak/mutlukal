@@ -11,7 +11,7 @@ export default async function ReportsPage() {
   const { factoryId } = await getFactoryContext();
 
   const myDevices = await db.query.devices.findMany({
-    where: eq(devices.factoryOwnerId, factoryId!)
+    where: eq(devices.orgId, factoryId!)
   });
   
   if (myDevices.length === 0) {

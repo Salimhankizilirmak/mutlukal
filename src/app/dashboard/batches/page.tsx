@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 export default async function BatchesPage() {
   const { factoryId } = await getFactoryContext();
   const devices_list = await db.query.devices.findMany({
-    where: eq(devices.factoryOwnerId, factoryId!)
+    where: eq(devices.orgId, factoryId!)
   });
   const deviceIds = devices_list.map(d => d.id);
 

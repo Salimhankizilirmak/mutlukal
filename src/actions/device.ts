@@ -24,6 +24,6 @@ export async function createDevice(formData: FormData) {
     name,
     deviceSecret,
     pinCode,
-    factoryOwnerId: factoryId
+    orgId: factoryId
   });
 }

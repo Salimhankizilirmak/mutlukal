@@ -1,23 +1,23 @@
 import { auth } from '@clerk/nextjs/server';
-import { db } from '@/db';
-import { companies, employees } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { isSuperAdmin } from './roles';
 
 export async function getFactoryContext() {
-  const { userId } = await auth();
-  if (!userId) throw new Error('Yetkisiz');
-
-  // 1. Kullanıcı Fabrika Sahibi mi?
-  const company = await db.select().from(companies).where(eq(companies.ownerId, userId)).limit(1);
-  if (company.length > 0) return { factoryId: userId, role: 'Sahip', company: company[0] };
-
-  // 2. Kullanıcı Personel mi?
-  const employee = await db.select().from(employees).where(eq(employees.clerkUserId, userId)).limit(1);
-  if (employee.length > 0) {
-    const factoryOwnerId = employee[0].factoryOwnerId;
-    const empCompany = await db.select().from(companies).where(eq(companies.ownerId, factoryOwnerId)).limit(1);
-    return { factoryId: factoryOwnerId, role: employee[0].role, company: empCompany[0] || null };
+  const { orgId, orgRole, userId } = await auth();
+  
+  if (!userId) {
+    throw new Error('Oturum açılmamış.');
   }
 
-  return { factoryId: null, role: null, company: null };
+  if (orgId) {
+    // Return organization details
+    // For now we don't have company object, UI will handle displaying Org name via OrganizationSwitcher
+    return { factoryId: orgId, role: orgRole };
+  }
+
+  const isAdmin = await isSuperAdmin();
+  if (isAdmin) {
+    return { factoryId: 'admin', role: 'Super Admin' };
+  }
+
+  throw new Error('Bir organizasyona bağlı değilsiniz.');
 }
