@@ -23,7 +23,7 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
     if (!file) { setError('Lütfen rapor dosyasını seçin.'); return; }
     setError(''); setSuccess(''); setLoading(true);
     try {
-      // CLIENT-SIDE PARSING (Vercel limitlerini aşmak için)
+      // CLIENT-SIDE PARSING
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: 'array' });
 
@@ -39,37 +39,55 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
         throw new Error(`"${aksiyonlarSheet}" sayfasında veri bulunamadı.`);
       }
 
-      // Header satırını bul
+      // Yardımcı fonksiyon: (00) temizleme
+      const cleanCode = (c: string | number | null | undefined) => {
+        if (!c) return '';
+        let s = String(c).trim();
+        if (s.startsWith('(00)')) s = s.substring(4);
+        return s;
+      };
+
+      // Kolonları bul
       const headerRow = data[0];
       const statusColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('durum') || String(h).toLowerCase().includes('status'));
-      const barcodeColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('barkod') || String(h).toLowerCase().includes('kod') && !String(h).toLowerCase().includes('durum'));
+      const barcodeColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('barkod') || String(h).toLowerCase().includes('kod') && !String(h).toLowerCase().includes('koli') && !String(h).toLowerCase().includes('palet'));
+      const koliColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('koli') || String(h).toLowerCase().includes('case') || String(h).toLowerCase().includes('agg'));
+      const paletColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('palet') || String(h).toLowerCase().includes('pallet') || String(h).toLowerCase().includes('sscc'));
       
       const barcodeIdx = barcodeColIdx >= 0 ? barcodeColIdx : 1;
 
-      // Success olan markalama kodlarını çek
-      const markalamaCodes: string[] = [];
+      // Verileri işle
+      const csvLines: string[] = [];
+      let quantity = 0;
+
       for (let i = 1; i < data.length; i++) {
         const row = data[i];
         if (!row || !row[barcodeIdx]) continue;
         
         const status = statusColIdx >= 0 ? String(row[statusColIdx] || '').toLowerCase() : 'success';
+        
+        // Sadece başarılı olanları (veya durumu olmayanları) alıyoruz
         if (status === 'success' || statusColIdx < 0) {
-          const code = String(row[barcodeIdx]);
-          if (code.startsWith('01')) {
-            markalamaCodes.push(code);
+          const km = cleanCode(row[barcodeIdx]);
+          const koli = koliColIdx >= 0 ? cleanCode(row[koliColIdx]) : '';
+          const palet = paletColIdx >= 0 ? cleanCode(row[paletColIdx]) : '';
+          
+          if (km.startsWith('01')) {
+            // FORMAT: Marka [TAB] Koli [TAB] Palet
+            csvLines.push(`${km}\t${koli}\t${palet}`);
+            quantity++;
           }
         }
       }
 
-      if (markalamaCodes.length === 0) {
-        throw new Error('Uygun markalama kodu bulunamadı. "Aksiyonlar" sayfasında "success" durumlu kayıt var mı?');
+      if (csvLines.length === 0) {
+        throw new Error('Uygun markalama kodu bulunamadı. "Aksiyonlar" sayfasında kayıt var mı?');
       }
 
       // CSV oluştur (UTF-8 BOM'suz)
-      const csvContent = markalamaCodes.join('\n');
-      const quantity = markalamaCodes.length;
+      const csvContent = csvLines.join('\n');
       const dateStr = productionDate || new Date().toLocaleDateString('tr-TR').replace(/\./g, '.');
-      const fileName = `${orderNo}, ${gtin}, ${quantity}, ${productName}, ${dateStr}.csv`;
+      const fileName = `${orderNo}, GTIN, ${quantity}, ${productName}, ${dateStr}.csv`;
 
       // İndirmeyi başlat
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
