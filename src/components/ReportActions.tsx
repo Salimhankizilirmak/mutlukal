@@ -140,7 +140,12 @@ export default function ReportActions({ workOrderNo, downloadUrl }: ReportAction
     try {
       const signedUrl = await getBatchDownloadUrl(downloadUrl);
       if (signedUrl) {
-        window.open(signedUrl, '_blank');
+        const a = document.createElement('a');
+        a.href = signedUrl;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => document.body.removeChild(a), 100);
       } else {
         alert('İndirme linki oluşturulamadı.');
       }

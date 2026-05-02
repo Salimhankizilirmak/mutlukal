@@ -24,12 +24,19 @@ export async function getPresignedUrl(workOrderNo: string, fileName: string, fil
 
 export async function getBatchDownloadUrl(fileUrl: string) {
   try {
-    // URL'den key'i ayıkla
-    const key = fileUrl.replace(`${process.env.SUPABASE_ENDPOINT}/storage/v1/object/public/${process.env.SUPABASE_BUCKET_NAME}/`, '');
+    // URL'den bucket adından sonrasını al (Key'i bulmak için daha güvenli yol)
+    const bucketToken = `/${process.env.SUPABASE_BUCKET_NAME}/`;
+    const keyIndex = fileUrl.indexOf(bucketToken);
+    
+    if (keyIndex === -1) throw new Error('Invalid file URL');
+    
+    const key = decodeURIComponent(fileUrl.substring(keyIndex + bucketToken.length));
+    const fileName = key.split('/').pop() || 'dosya.xlsx';
     
     const command = new GetObjectCommand({
       Bucket: process.env.SUPABASE_BUCKET_NAME!,
       Key: key,
+      ResponseContentDisposition: `attachment; filename="${fileName}"`,
     });
 
     return await getSignedUrl(s3Client, command, { expiresIn: 3600 });
