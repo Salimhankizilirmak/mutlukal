@@ -42,6 +42,7 @@ export async function POST(req: Request) {
     }
 
     if (!targetBatchId) return NextResponse.json({ success: false, message: 'Aktif iş emri yok.' });
+    if (!reportUrl) return NextResponse.json({ success: false, message: 'Rapor dosyası sunucuya ulaşmadı (Eski Ajan sürümü?).' });
 
     // Yeni rapor kaydı oluştur
     await db.insert(productionReports).values({

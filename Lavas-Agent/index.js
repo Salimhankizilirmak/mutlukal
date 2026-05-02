@@ -79,7 +79,7 @@ const htmlContent = `
     <!-- HEADER -->
     <div class="flex items-center justify-between p-5 border-b border-zinc-800">
       <div>
-        <p class="text-xs text-emerald-500 font-bold tracking-widest uppercase">Lavaş Trace</p>
+        <p class="text-xs text-emerald-500 font-bold tracking-widest uppercase">Lavaş Trace v1.2</p>
         <p id="deviceLabel" class="text-zinc-100 font-semibold text-sm mt-0.5">Bağlanıyor...</p>
       </div>
       <span id="statusDot" class="w-3 h-3 rounded-full bg-yellow-500 shadow-[0_0_8px_#eab308]"></span>
