@@ -5,6 +5,8 @@ import { eq, and, desc } from 'drizzle-orm';
 import { FileText } from 'lucide-react';
 import ReportActions from '@/components/ReportActions';
 
+export const dynamic = 'force-dynamic';
+
 export default async function ReportsPage() {
   const { userId } = await auth();
 

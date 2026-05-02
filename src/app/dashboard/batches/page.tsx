@@ -6,6 +6,8 @@ import { auth } from '@clerk/nextjs/server';
 import { devices } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 
+export const dynamic = 'force-dynamic';
+
 export default async function BatchesPage() {
   const { userId } = await auth();
   const devices_list = await db.query.devices.findMany({
