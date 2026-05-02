@@ -31,6 +31,7 @@ export async function GET(request: Request) {
   const { s3Client } = await import('@/lib/s3');
 
   const key = batch.fileUrl.replace(`${process.env.SUPABASE_ENDPOINT}/storage/v1/object/public/${process.env.SUPABASE_BUCKET_NAME}/`, '');
+  const fileName = key.split('/').pop() || `${batch.workOrderNo}.xlsx`;
 
   const command = new GetObjectCommand({
     Bucket: process.env.SUPABASE_BUCKET_NAME!,
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
     id: batch.id,
     workOrderNo: batch.workOrderNo,
     downloadUrl,
+    fileName,
     fileSize: batch.fileSize
   });
 }
