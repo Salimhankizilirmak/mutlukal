@@ -17,11 +17,12 @@ export async function POST(req: Request) {
 
   // 1. ADIM: RAPOR İÇİN YÜKLEME URL'İ AL
   if (action === 'get_report_upload_url') {
-    const key = `reports/${uuidv4()}-${fileName}`;
+    const safeFileName = fileName || 'rapor.xlsx';
+    const key = `reports/${uuidv4()}-${safeFileName}`;
     const command = new PutObjectCommand({
       Bucket: process.env.SUPABASE_BUCKET_NAME!,
       Key: key,
-      ContentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // Varsayılan excel
+      ContentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
     const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
     const publicUrl = `${process.env.SUPABASE_ENDPOINT}/storage/v1/object/public/${process.env.SUPABASE_BUCKET_NAME}/${key}`;

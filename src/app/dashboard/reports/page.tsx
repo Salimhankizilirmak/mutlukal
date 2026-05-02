@@ -55,7 +55,18 @@ export default async function ReportsPage() {
                 <tr key={batch.id} className="hover:bg-zinc-800/20 transition-all">
                   <td className="px-6 py-5">
                     <div className="font-mono text-emerald-400 font-bold">{batch.workOrderNo}</div>
-                    <div className="text-[10px] text-zinc-600 mt-0.5 font-mono">{batch.id.substring(0, 16)}...</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] text-zinc-600 font-mono">{batch.id.substring(0, 8)}...</span>
+                      {batch.reportUrl ? (
+                        <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20 flex items-center gap-1">
+                          <div className="w-1 h-1 rounded-full bg-blue-400 animate-pulse" /> Rapor Yüklü
+                        </span>
+                      ) : (
+                        <span className="text-[10px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded border border-zinc-700">
+                          Rapor Bekleniyor
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-5 text-zinc-400 text-sm">
                     {devicesMap[batch.deviceId] || batch.deviceId}
