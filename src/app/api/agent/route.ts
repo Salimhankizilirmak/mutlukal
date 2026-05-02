@@ -1,19 +1,21 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { devices, batches } from '@/db/schema';
+import { devices, importBatches } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
 export async function POST(req: Request) {
   const body = await req.json();
   const { action, deviceSecret, targetDeviceId, batchId } = body;
 
-  const device = await db.select().from(devices).where(eq(devices.pinCode, deviceSecret)).limit(1); // Basit auth
+  // deviceSecret ile doğrula (pinCode değil)
+  const device = await db.select().from(devices).where(eq(devices.deviceSecret, deviceSecret)).limit(1);
   if (!device.length) return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 });
 
-  // RAPOR YÜKLEME
+  // RAPOR YÜKLEME — importBatches tablosunu güncelle
   if (action === 'upload_report') {
-    // Gerçek senaryoda reportData (base64) buluta yüklenir, biz URL simüle ediyoruz
-    await db.update(batches).set({ status: 'completed', reportUrl: 'rapor_dosyasi.pdf' }).where(eq(batches.id, batchId));
+    await db.update(importBatches)
+      .set({ status: 'completed' })
+      .where(eq(importBatches.id, batchId));
     return NextResponse.json({ success: true });
   }
 
@@ -23,9 +25,11 @@ export async function POST(req: Request) {
     return NextResponse.json(allDevices.filter(d => d.id !== device[0].id));
   }
 
-  // İŞ AKTARMA
+  // İŞ AKTARMA — importBatches tablosunu güncelle
   if (action === 'transfer_batch') {
-    await db.update(batches).set({ deviceId: targetDeviceId }).where(eq(batches.id, batchId));
+    await db.update(importBatches)
+      .set({ deviceId: targetDeviceId })
+      .where(eq(importBatches.id, batchId));
     return NextResponse.json({ success: true });
   }
 

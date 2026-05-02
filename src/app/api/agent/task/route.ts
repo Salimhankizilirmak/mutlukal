@@ -23,7 +23,7 @@ export async function GET(request: Request) {
       eq(importBatches.deviceId, device.id),
       eq(importBatches.status, 'pending')
     ))
-    .orderBy(desc(importBatches.id))
+    .orderBy(desc(importBatches.createdAt))
     .limit(1);
 
   if (!batch) return NextResponse.json({ message: 'No pending tasks' });
