@@ -17,8 +17,14 @@ export async function POST(req: Request) {
 
   // 1. ADIM: RAPOR İÇİN YÜKLEME URL'İ AL
   if (action === 'get_report_upload_url') {
-    const safeFileName = fileName || 'rapor.xlsx';
+    const slugify = (str: string) => str.toLowerCase()
+      .replace(/[^a-z0-9.]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+      
+    const safeFileName = slugify(fileName || 'rapor.xlsx');
     const key = `reports/${uuidv4()}-${safeFileName}`;
+    
     const command = new PutObjectCommand({
       Bucket: process.env.SUPABASE_BUCKET_NAME!,
       Key: key,

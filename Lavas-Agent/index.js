@@ -378,8 +378,9 @@ app.post('/api/report-process', async (req, res) => {
 
         res.json(confirmRes.data);
     } catch (e) {
-        console.error('Report Process Error:', e.message);
-        res.json({ success: false, message: 'Rapor yükleme hatası: ' + e.message });
+        const errorDetail = e.response?.data?.message || e.response?.data?.error || e.message;
+        console.error('Report Process Error:', errorDetail);
+        res.json({ success: false, message: 'Rapor yükleme hatası: ' + errorDetail });
     }
 });
 
