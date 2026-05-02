@@ -17,7 +17,7 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
   const [productionDate, setProductionDate] = useState('');
   const [itemsPerCarton, setItemsPerCarton] = useState('30');
   const [cartonsPerPallet, setCartonsPerPallet] = useState('84');
-  const [startingSerial, setStartingSerial] = useState('1000000');
+  const [startingSerial, setStartingSerial] = useState(() => String(Math.floor(Math.random() * 8999999) + 1000000));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
