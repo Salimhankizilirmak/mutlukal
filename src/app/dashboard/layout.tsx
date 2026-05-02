@@ -50,15 +50,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
           {isAdmin && <Link href="/dashboard/super-admin" className="flex items-center gap-3 text-amber-500 hover:bg-amber-500/10 p-3 rounded-lg transition-all mt-8 border border-amber-500/20"><ShieldAlert size={20} /> Süper Admin</Link>}
         </nav>
         
-        <div className="p-4 border-t border-zinc-800/50 space-y-2">
-          <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold mb-2 text-center">Makine Ajanı İndir</p>
-          <a href="/downloads/Lavas_Agent.exe" download className="w-full bg-blue-600/20 border border-blue-500/40 hover:bg-blue-600 hover:text-white text-blue-400 font-semibold py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2 text-xs">
-            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            Windows Ajanı (.exe)
-          </a>
-          <a href="/downloads/gui_agent.py" download className="w-full bg-emerald-600/20 border border-emerald-500/40 hover:bg-emerald-600 hover:text-white text-emerald-400 font-semibold py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2 text-xs">
-            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            Masaüstü Arayüzü (.py)
+        <div className="p-4 border-t border-zinc-800/50">
+          <a
+            href="/downloads/Lavas_Agent.exe"
+            download
+            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-700 to-blue-600 hover:from-blue-600 hover:to-blue-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-[0_0_20px_rgba(37,99,235,0.25)] hover:shadow-[0_0_25px_rgba(37,99,235,0.45)] text-sm border border-blue-500/30"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Lavaş Trace Masaüstü Ajanı
           </a>
         </div>
       </aside>
