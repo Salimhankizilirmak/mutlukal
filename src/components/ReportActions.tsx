@@ -130,14 +130,11 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
           const palet = cleanAndFormat(row[paletIdx], 'sscc');
 
           // If this row doesn't start with '01' and we have a previous row, 
-          // it's likely a continuation of a split barcode.
+          // it's a continuation of a split barcode. We merge it regardless of SSCC columns.
           if (processedRows.length > 0 && !rawMarka.startsWith('01') && !rawMarka.startsWith('(01)')) {
             const lastRow = processedRows[processedRows.length - 1];
-            // Only merge if SSCCs match or the current row has no SSCCs (pure continuation)
-            if (!koli || koli === lastRow.koli) {
-              lastRow.marka = cleanAndFormat(lastRow.marka + rawMarka, 'gtin');
-              continue;
-            }
+            lastRow.marka = cleanAndFormat(lastRow.marka + rawMarka, 'gtin');
+            continue;
           }
 
           const marka = cleanAndFormat(rawMarka, 'gtin');
