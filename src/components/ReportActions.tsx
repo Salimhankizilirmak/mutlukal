@@ -161,6 +161,15 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
         for (let i = 1; i < data.length; i++) {
           if (!data[i]) continue;
           const val = String(data[i][barcodeIdx] || '').trim();
+          if (!val) continue;
+
+          // Merge continuation lines in automatic mode as well
+          if (markalar.length > 0 && !val.startsWith('01') && !val.startsWith('(01)')) {
+            const lastIdx = markalar.length - 1;
+            markalar[lastIdx] = cleanAndFormat(markalar[lastIdx] + val, 'gtin');
+            continue;
+          }
+
           if (val.startsWith('01') || val.startsWith('(01)') || val.length >= 13) {
             const cleaned = cleanAndFormat(val, 'gtin');
             if (cleaned) markalar.push(cleaned);
