@@ -44,27 +44,33 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
 
   const cleanAndFormat = (val: string, type: 'gtin' | 'sscc') => {
     if (!val) return '';
-    let v = String(val).replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    // Only strip invisible unicode junk from start/end — preserve internal GS (\u001D) and all payload chars
+    let v = String(val).replace(/^[\u200B-\u200D\uFEFF\s]+|[\u200B-\u200D\uFEFF\s]+$/g, '');
     
     // Attempt to fix scientific notation if present (e.g. 8.69E+16)
-    if (v.toLowerCase().includes('e+')) {
-      try { v = BigInt(Number(v)).toString(); } catch {}
+    if (/^[\d.]+e[+\-]\d+$/i.test(v)) {
+      try { v = BigInt(Math.round(Number(v))).toString(); } catch {}
     }
     
     if (v.startsWith('(01)')) v = v.substring(4);
     if (v.startsWith('(00)')) v = v.substring(4);
     
-    // Fix dropped leading zeros by Excel and restore GS characters for Russian crypto tails
     if (type === 'gtin') {
+      // Restore dropped leading zero from Excel (13-digit all-numeric GTIN becomes 14-digit)
       if (/^\d{13}$/.test(v)) v = '0' + v;
-      // Some barcode scanners output space instead of GS (\u001D) before AI 91 and AI 92.
-      // We must explicitly inject \u001D for the Russian system to accept the crypto tail.
-      v = v.replace(/[ \u001D]91(.{4})[ \u001D]92/g, '\u001D91$1\u001D92');
+
+      // Restore GS (\u001D) separator before AI 91 and AI 92 when scanner emitted a space instead.
+      // Pattern: <payload> [space or GS] 91 <4-char verification key> [space or GS] 92 <base64 hash>
+      // We replace the separator spaces with actual GS (\u001D) so the Russian system accepts the file.
+      v = v.replace(/([\s\u001D])91([A-Za-z0-9]{4})[\s\u001D]92/g,
+        (_m: string, _g1: string, key: string) => `\u001D91${key}\u001D92`);
     }
     
     if (type === 'sscc') {
-      // SSCC MUST be exactly 20 digits starting with 00 according to partner regulations
-      v = v.padStart(20, '0');
+      // Partner requires exactly 20-digit SSCC prefixed with 00
+      // Strip any non-digit characters first, then pad to 20 digits
+      const digitsOnly = v.replace(/\D/g, '');
+      v = digitsOnly.padStart(20, '0').slice(-20);
     }
     
     return v;
@@ -79,14 +85,21 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
         const text = await file.text();
         const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
         
+        // Detect separator from first line only (avoids false detection from barcode payload content)
         let separator = ',';
         if (lines.length > 0) {
           const firstLine = lines[0];
-          if (firstLine.includes('\t')) separator = '\t';
-          else if (firstLine.includes(';')) separator = ';';
+          // Count tabs vs semicolons to pick the more likely delimiter
+          const tabCount = (firstLine.match(/\t/g) || []).length;
+          const semiCount = (firstLine.match(/;/g) || []).length;
+          if (tabCount > 0 && tabCount >= semiCount) separator = '\t';
+          else if (semiCount > 0) separator = ';';
         }
         
-        data = lines.map(line => line.split(separator).map(col => col.trim()));
+        // IMPORTANT: split on separator but do NOT trim columns — trimming strips internal \u001D GS chars
+        // that may appear at start/end of a field when the barcode is the first/last column.
+        // We only trim surrounding whitespace characters, not control chars.
+        data = lines.map(line => line.split(separator).map(col => col.replace(/^[ \t]+|[ \t]+$/g, '')));
       } else {
         const buffer = await file.arrayBuffer();
         const wb = XLSX.read(buffer, { type: 'array' });
