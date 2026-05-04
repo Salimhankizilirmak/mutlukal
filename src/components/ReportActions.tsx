@@ -59,11 +59,29 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
       // Restore dropped leading zero from Excel (13-digit all-numeric GTIN becomes 14-digit)
       if (/^\d{13}$/.test(v)) v = '0' + v;
 
-      // Restore GS (\u001D) separator before AI 91 and AI 92 when scanner emitted a space instead.
-      // Pattern: <payload> [space or GS] 91 <4-char verification key> [space or GS] 92 <base64 hash>
-      // We replace the separator spaces with actual GS (\u001D) so the Russian system accepts the file.
-      v = v.replace(/([\s\u001D])91([A-Za-z0-9]{4})[\s\u001D]92/g,
-        (_m: string, _g1: string, key: string) => `\u001D91${key}\u001D92`);
+      // Restore GS (\u001D) separators between GS1 Application Identifiers (AI 91 and AI 92).
+      // Barcode scanners emit 3 different forms — we must handle all:
+      //   OK:  01<gtin>  \u001D91<4>  \u001D92<hash>
+      //   BAD: 01<gtin>  [space]91<4>[space]92<hash>    (space instead of GS)
+      //   BAD: 01<gtin>  91<4>92<hash>                  (no separator at all)
+      // Strategy: find the fixed-length GTIN payload (AI 01 = 14 digits), then locate
+      // AI 91 (4-char key) and AI 92 (variable base64 hash) by their numeric prefixes
+      // and rebuild the string with proper \u001D separators.
+      if (/^01\d{14}/.test(v)) {
+        // Extract the AI 01 block (exactly 16 chars: "01" + 14 digits)
+        const ai01 = v.substring(0, 16);
+        const rest = v.substring(16).replace(/^[\s\u001D]+/, ''); // strip any leading GS/space after GTIN
+        
+        // rest now starts with the random check characters, then 91XXXX, then 92<hash>
+        // Find "91" followed by exactly 4 alphanumeric chars, then "92"
+        const ai91Match = rest.match(/^([\s\S]*?)[\s\u001D]?91([A-Za-z0-9]{4})[\s\u001D]?92([\s\S]*)$/);
+        if (ai91Match) {
+          const randomPart = ai91Match[1]; // chars between GTIN and AI 91
+          const key91 = ai91Match[2];      // 4-char verification key
+          const hash92 = ai91Match[3];     // base64 hash
+          v = `${ai01}${randomPart}\u001D91${key91}\u001D92${hash92}`;
+        }
+      }
     }
     
     if (type === 'sscc') {
