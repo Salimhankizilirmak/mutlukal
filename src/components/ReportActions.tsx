@@ -39,12 +39,12 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
     const serialStr = String(serial).padStart(7, '0');
     const base = extension + gln + serialStr;
     const check = calculateCheckDigit(base);
-    return base + check; // (00) prefix removed as requested
+    return '00' + base + check; // (00) prefix restored as requested by partner
   };
 
   const cleanAndFormat = (val: string, type: 'gtin' | 'sscc') => {
     if (!val) return '';
-    let v = String(val).replace(/[\u200B-\u200D\uFEFF]/g, '').trim().replace(/['"]/g, '');
+    let v = String(val).replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     
     // Attempt to fix scientific notation if present (e.g. 8.69E+16)
     if (v.toLowerCase().includes('e+')) {
@@ -54,9 +54,18 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
     if (v.startsWith('(01)')) v = v.substring(4);
     if (v.startsWith('(00)')) v = v.substring(4);
     
-    // Fix dropped leading zeros by Excel
-    if (type === 'gtin' && /^\d{13}$/.test(v)) v = '0' + v;
-    if (type === 'sscc' && /^\d{17}$/.test(v)) v = '0' + v;
+    // Fix dropped leading zeros by Excel and restore GS characters for Russian crypto tails
+    if (type === 'gtin') {
+      if (/^\d{13}$/.test(v)) v = '0' + v;
+      // Some barcode scanners output space instead of GS (\u001D) before AI 91 and AI 92.
+      // We must explicitly inject \u001D for the Russian system to accept the crypto tail.
+      v = v.replace(/[ \u001D]91(.{4})[ \u001D]92/g, '\u001D91$1\u001D92');
+    }
+    
+    if (type === 'sscc') {
+      // SSCC MUST be exactly 20 digits starting with 00 according to partner regulations
+      v = v.padStart(20, '0');
+    }
     
     return v;
   };
