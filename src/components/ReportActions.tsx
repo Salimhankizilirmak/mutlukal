@@ -84,36 +84,20 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
     setError(''); setSuccess(''); setLoading(true);
     try {
       let data: string[][] = [];
-      if (file.name.toLowerCase().endsWith('.csv')) {
-        const text = await file.text();
-        const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-        
-        // Detect separator from first line only (avoids false detection from barcode payload content)
-        let separator = ',';
-        if (lines.length > 0) {
-          const firstLine = lines[0];
-          // Count tabs vs semicolons to pick the more likely delimiter
-          const tabCount = (firstLine.match(/\t/g) || []).length;
-          const semiCount = (firstLine.match(/;/g) || []).length;
-          if (tabCount > 0 && tabCount >= semiCount) separator = '\t';
-          else if (semiCount > 0) separator = ';';
-        }
-        
-        // IMPORTANT: split on separator but do NOT trim columns — trimming strips internal \u001D GS chars
-        // that may appear at start/end of a field when the barcode is the first/last column.
-        // We only trim surrounding whitespace characters, not control chars.
-        data = lines.map(line => line.split(separator).map(col => col.replace(/^[ \t]+|[ \t]+$/g, '')));
-      } else {
-        const buffer = await file.arrayBuffer();
-        const wb = XLSX.read(buffer, { type: 'array' });
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      
+      // If it's an Excel file, try to find the "Okunanlar" sheet, otherwise use the first sheet
+      let ws = wb.Sheets[wb.SheetNames[0]];
+      if (!file.name.toLowerCase().endsWith('.csv')) {
         const targetSheetName = wb.SheetNames.find(s =>
           s.toLowerCase().includes('okunan') || s.toLowerCase().includes('read') || s.toLowerCase().includes('scan') ||
           s.toLowerCase().includes('aksiyon') || s.toLowerCase().includes('action') || s.toLowerCase().includes('kod')
         ) || wb.SheetNames[0];
-
-        const ws = wb.Sheets[targetSheetName];
-        data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) as string[][];
+        ws = wb.Sheets[targetSheetName];
       }
+
+      data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' }) as string[][];
 
       if (!data || data.length === 0) throw new Error("Dosyada veri bulunamadı.");
 
