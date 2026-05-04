@@ -16,6 +16,7 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
   const [productName, setProductName] = useState('');
   const [productionDate, setProductionDate] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
+  const [hasExistingHierarchy, setHasExistingHierarchy] = useState(false);
   const [itemsPerCarton, setItemsPerCarton] = useState('30');
   const [cartonsPerPallet, setCartonsPerPallet] = useState('84');
   const [startingSerial, setStartingSerial] = useState(() => String(Math.floor(Math.random() * 8999999) + 1000000));
@@ -45,68 +46,109 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
     if (!file) { setError('Lütfen rapor dosyasını seçin.'); return; }
     setError(''); setSuccess(''); setLoading(true);
     try {
-      const buffer = await file.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'array' });
-      const targetSheetName = wb.SheetNames.find(s =>
-        s.toLowerCase().includes('okunan') || s.toLowerCase().includes('read') || s.toLowerCase().includes('scan') ||
-        s.toLowerCase().includes('aksiyon') || s.toLowerCase().includes('action') || s.toLowerCase().includes('kod')
-      ) || wb.SheetNames[0];
+      let data: string[][] = [];
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        const text = await file.text();
+        const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+        const separator = text.includes(';') ? ';' : (text.includes('\t') ? '\t' : ',');
+        data = lines.map(line => line.split(separator).map(col => col.trim()));
+      } else {
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const targetSheetName = wb.SheetNames.find(s =>
+          s.toLowerCase().includes('okunan') || s.toLowerCase().includes('read') || s.toLowerCase().includes('scan') ||
+          s.toLowerCase().includes('aksiyon') || s.toLowerCase().includes('action') || s.toLowerCase().includes('kod')
+        ) || wb.SheetNames[0];
 
-      const ws = wb.Sheets[targetSheetName];
-      const data: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) as string[][];
-
-      if (!data || data.length < 2) throw new Error(`"${targetSheetName}" sayfasında veri bulunamadı.`);
-
-      const headerRow = data[0];
-      const barcodeColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('barkod') || String(h).toLowerCase().includes('kod') && !String(h).toLowerCase().includes('koli') && !String(h).toLowerCase().includes('palet'));
-      const barcodeIdx = barcodeColIdx >= 0 ? barcodeColIdx : 1;
-
-      // Sadece 01 ile başlayan Marka kodlarını al
-      const markalar: string[] = [];
-      for (let i = 1; i < data.length; i++) {
-        const val = String(data[i][barcodeIdx] || '').trim();
-        if (val.startsWith('01') || val.startsWith('(01)')) {
-          // (01) veya (00) varsa temizle (genel temizlik)
-          let cleaned = val;
-          if (cleaned.startsWith('(01)')) cleaned = cleaned.substring(4);
-          if (cleaned.startsWith('(00)')) cleaned = cleaned.substring(4);
-          markalar.push(cleaned);
-        }
+        const ws = wb.Sheets[targetSheetName];
+        data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) as string[][];
       }
 
-      if (markalar.length === 0) throw new Error('Geçerli markalama kodu (01...) bulunamadı.');
-
-      // SSCC GENERATION LOGIC (Python script reference)
-      const GLN = "869882938";
-      const EXTENSION = "2";
-      const ipc = parseInt(itemsPerCarton) || 30;
-      const cpp = parseInt(cartonsPerPallet) || 84;
-      let serial = parseInt(startingSerial) || 1000000;
+      if (!data || data.length === 0) throw new Error("Dosyada veri bulunamadı.");
 
       const csvLines: string[] = [];
-      let currentKoliSSCC = "";
-      let currentPaletSSCC = "";
+      let quantity = 0;
 
-      for (let i = 0; i < markalar.length; i++) {
-        const isNewKoli = i % ipc === 0;
-        const cartonNo = Math.floor(i / ipc) + 1;
-        const isNewPalet = isNewKoli && ((cartonNo - 1) % cpp === 0);
+      if (hasExistingHierarchy) {
+        const headerRow = data[0] || [];
+        let markaIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('barkod') || String(h).toLowerCase().includes('kod') || String(h).toLowerCase().includes('marka') || String(h).toLowerCase().includes('gtin'));
+        let koliIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('koli'));
+        let paletIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('palet'));
 
-        if (isNewKoli) {
-          if (isNewPalet) {
-            currentPaletSSCC = generateSSCC(EXTENSION, GLN, serial);
-            serial++;
-          }
-          currentKoliSSCC = generateSSCC(EXTENSION, GLN, serial);
-          serial++;
+        if (markaIdx === -1) markaIdx = 0;
+        if (koliIdx === -1) koliIdx = 1;
+        if (paletIdx === -1) paletIdx = 2;
+
+        let startIdx = 1;
+        if (data[0] && (String(data[0][markaIdx] || '').startsWith('01') || String(data[0][markaIdx] || '').startsWith('(01)'))) {
+          startIdx = 0;
         }
 
-        // FORMAT: Marka \t Koli \t Palet \t Üretim Tarihi \t Son Kullanma Tarihi
-        csvLines.push(`${markalar[i]}\t${currentKoliSSCC}\t${currentPaletSSCC}\t${productionDate}\t${expiryDate}`);
+        for (let i = startIdx; i < data.length; i++) {
+          const row = data[i];
+          if (!row || row.length === 0) continue;
+          let marka = String(row[markaIdx] || '').trim();
+          let koli = String(row[koliIdx] || '').trim();
+          let palet = String(row[paletIdx] || '').trim();
+
+          if (!marka && !koli && !palet) continue;
+
+          if (marka.startsWith('(01)')) marka = marka.substring(4);
+          if (marka.startsWith('(00)')) marka = marka.substring(4);
+
+          csvLines.push(`${marka}\t${koli}\t${palet}\t${productionDate}\t${expiryDate}`);
+          quantity++;
+        }
+
+        if (quantity === 0) throw new Error('Dönüştürülecek veri bulunamadı. Lütfen sütunların doğruluğundan emin olun.');
+      } else {
+        const headerRow = data[0] || [];
+        const barcodeColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('barkod') || String(h).toLowerCase().includes('kod') && !String(h).toLowerCase().includes('koli') && !String(h).toLowerCase().includes('palet'));
+        const barcodeIdx = barcodeColIdx >= 0 ? barcodeColIdx : 1;
+
+        const markalar: string[] = [];
+        for (let i = 1; i < data.length; i++) {
+          if (!data[i]) continue;
+          const val = String(data[i][barcodeIdx] || '').trim();
+          if (val.startsWith('01') || val.startsWith('(01)')) {
+            let cleaned = val;
+            if (cleaned.startsWith('(01)')) cleaned = cleaned.substring(4);
+            if (cleaned.startsWith('(00)')) cleaned = cleaned.substring(4);
+            markalar.push(cleaned);
+          }
+        }
+
+        if (markalar.length === 0) throw new Error('Geçerli markalama kodu (01...) bulunamadı.');
+
+        const GLN = "869882938";
+        const EXTENSION = "2";
+        const ipc = parseInt(itemsPerCarton) || 30;
+        const cpp = parseInt(cartonsPerPallet) || 84;
+        let serial = parseInt(startingSerial) || 1000000;
+
+        let currentKoliSSCC = "";
+        let currentPaletSSCC = "";
+
+        for (let i = 0; i < markalar.length; i++) {
+          const isNewKoli = i % ipc === 0;
+          const cartonNo = Math.floor(i / ipc) + 1;
+          const isNewPalet = isNewKoli && ((cartonNo - 1) % cpp === 0);
+
+          if (isNewKoli) {
+            if (isNewPalet) {
+              currentPaletSSCC = generateSSCC(EXTENSION, GLN, serial);
+              serial++;
+            }
+            currentKoliSSCC = generateSSCC(EXTENSION, GLN, serial);
+            serial++;
+          }
+
+          csvLines.push(`${markalar[i]}\t${currentKoliSSCC}\t${currentPaletSSCC}\t${productionDate}\t${expiryDate}`);
+        }
+        quantity = markalar.length;
       }
 
       const csvContent = csvLines.join('\n');
-      const quantity = markalar.length;
       const dateStr = productionDate || new Date().toLocaleDateString('tr-TR').replace(/\./g, '.');
       const fileName = `${orderNo}, GTIN, ${quantity}, ${productName}, ${dateStr}.csv`;
 
@@ -141,8 +183,14 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
         <div className="p-6 space-y-4">
           <div>
             <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block font-bold">Rapor Dosyası</label>
-            <input type="file" accept=".xlsx,.xls" onChange={e => setFile(e.target.files?.[0] || null)}
+            <input type="file" accept=".xlsx,.xls,.csv" onChange={e => setFile(e.target.files?.[0] || null)}
               className="w-full bg-[#09090b] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-300 text-xs file:mr-3 file:bg-zinc-800 file:border-0 file:text-zinc-300 file:text-[10px] file:py-1 file:px-2 file:rounded" />
+            
+            <label className="flex items-center gap-2 mt-3 cursor-pointer">
+              <input type="checkbox" checked={hasExistingHierarchy} onChange={e => setHasExistingHierarchy(e.target.checked)} 
+                className="w-4 h-4 rounded border-zinc-700 bg-[#09090b] accent-amber-500" />
+              <span className="text-xs text-zinc-400 font-medium">Dosyada koli ve palet kodları zaten mevcut (Sadece tarihleri ekle)</span>
+            </label>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -176,26 +224,28 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
             </div>
           </div>
 
-          <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl space-y-4">
-             <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">Agregasyon Ayarları (SSCC)</p>
-             <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-[9px] uppercase text-zinc-500 mb-1 block">Koli/Şişe</label>
-                  <input type="number" value={itemsPerCarton} onChange={e => setItemsPerCarton(e.target.value)}
-                    className="w-full bg-black/50 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200" />
-                </div>
-                <div>
-                  <label className="text-[9px] uppercase text-zinc-500 mb-1 block">Palet/Koli</label>
-                  <input type="number" value={cartonsPerPallet} onChange={e => setCartonsPerPallet(e.target.value)}
-                    className="w-full bg-black/50 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200" />
-                </div>
-                <div>
-                  <label className="text-[9px] uppercase text-zinc-500 mb-1 block">Seri No</label>
-                  <input type="number" value={startingSerial} onChange={e => setStartingSerial(e.target.value)}
-                    className="w-full bg-black/50 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200" />
-                </div>
-             </div>
-          </div>
+          {!hasExistingHierarchy && (
+            <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl space-y-4">
+               <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">Agregasyon Ayarları (SSCC)</p>
+               <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[9px] uppercase text-zinc-500 mb-1 block">Koli/Şişe</label>
+                    <input type="number" value={itemsPerCarton} onChange={e => setItemsPerCarton(e.target.value)}
+                      className="w-full bg-black/50 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200" />
+                  </div>
+                  <div>
+                    <label className="text-[9px] uppercase text-zinc-500 mb-1 block">Palet/Koli</label>
+                    <input type="number" value={cartonsPerPallet} onChange={e => setCartonsPerPallet(e.target.value)}
+                      className="w-full bg-black/50 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200" />
+                  </div>
+                  <div>
+                    <label className="text-[9px] uppercase text-zinc-500 mb-1 block">Seri No</label>
+                    <input type="number" value={startingSerial} onChange={e => setStartingSerial(e.target.value)}
+                      className="w-full bg-black/50 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200" />
+                  </div>
+               </div>
+            </div>
+          )}
 
           {error && <p className="text-red-400 text-[10px] bg-red-500/5 border border-red-500/10 rounded-lg px-3 py-2">{error}</p>}
           {success && <p className="text-emerald-400 text-[10px] bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2">{success}</p>}
