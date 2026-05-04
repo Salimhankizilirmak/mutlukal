@@ -42,6 +42,25 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
     return base + check; // (00) prefix removed as requested
   };
 
+  const cleanAndFormat = (val: string, type: 'gtin' | 'sscc') => {
+    if (!val) return '';
+    let v = String(val).replace(/[\u200B-\u200D\uFEFF]/g, '').trim().replace(/['"]/g, '');
+    
+    // Attempt to fix scientific notation if present (e.g. 8.69E+16)
+    if (v.toLowerCase().includes('e+')) {
+      try { v = BigInt(Number(v)).toString(); } catch {}
+    }
+    
+    if (v.startsWith('(01)')) v = v.substring(4);
+    if (v.startsWith('(00)')) v = v.substring(4);
+    
+    // Fix dropped leading zeros by Excel
+    if (type === 'gtin' && /^\d{13}$/.test(v)) v = '0' + v;
+    if (type === 'sscc' && /^\d{17}$/.test(v)) v = '0' + v;
+    
+    return v;
+  };
+
   const handleConvert = async () => {
     if (!file) { setError('Lütfen rapor dosyasını seçin.'); return; }
     setError(''); setSuccess(''); setLoading(true);
@@ -87,14 +106,11 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
         for (let i = startIdx; i < data.length; i++) {
           const row = data[i];
           if (!row || row.length === 0) continue;
-          let marka = String(row[markaIdx] || '').trim();
-          let koli = String(row[koliIdx] || '').trim();
-          let palet = String(row[paletIdx] || '').trim();
+          let marka = cleanAndFormat(row[markaIdx], 'gtin');
+          let koli = cleanAndFormat(row[koliIdx], 'sscc');
+          let palet = cleanAndFormat(row[paletIdx], 'sscc');
 
           if (!marka && !koli && !palet) continue;
-
-          if (marka.startsWith('(01)')) marka = marka.substring(4);
-          if (marka.startsWith('(00)')) marka = marka.substring(4);
 
           csvLines.push(`${marka}\t${koli}\t${palet}\t${productionDate}\t${expiryDate}`);
           quantity++;
@@ -110,11 +126,9 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
         for (let i = 1; i < data.length; i++) {
           if (!data[i]) continue;
           const val = String(data[i][barcodeIdx] || '').trim();
-          if (val.startsWith('01') || val.startsWith('(01)')) {
-            let cleaned = val;
-            if (cleaned.startsWith('(01)')) cleaned = cleaned.substring(4);
-            if (cleaned.startsWith('(00)')) cleaned = cleaned.substring(4);
-            markalar.push(cleaned);
+          if (val.startsWith('01') || val.startsWith('(01)') || val.length >= 13) {
+            let cleaned = cleanAndFormat(val, 'gtin');
+            if (cleaned) markalar.push(cleaned);
           }
         }
 
@@ -148,7 +162,8 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
         quantity = markalar.length;
       }
 
-      const csvContent = csvLines.join('\n');
+      // Dosyanın Windows Notepad'de düzgün görünmesi için \r\n ile birleştirildi
+      const csvContent = csvLines.join('\r\n');
       const dateStr = productionDate || new Date().toLocaleDateString('tr-TR').replace(/\./g, '.');
       const fileName = `${orderNo}, GTIN, ${quantity}, ${productName}, ${dateStr}.csv`;
 
