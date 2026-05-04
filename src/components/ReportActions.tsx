@@ -60,13 +60,15 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
       if (/^\d{13}$/.test(v)) v = '0' + v;
 
       // Restore GS (\u001D) separators for Russian crypto tails (AI 91 and AI 92).
-      // We MUST replace any spaces (or other separators) with the \u001D character.
-      // The partner reports "boşluk hatası" (space error) if a space remains before the GS character.
-      // This regex finds 91[4chars]92 and ensures they are prefixed ONLY with \u001D.
-      v = v.replace(/[\s\u001D]?91(.{4})[\s\u001D]?92/g, '\u001D91$1\u001D92');
+      // We use \s* to consume ANY amount of whitespace (spaces, tabs, etc.) 
+      // and replace it with exactly one \u001D.
+      v = v.replace(/\s*91(.{4})\s*92/g, '\u001D91$1\u001D92');
       
-      // Remove any double GS or leading GS that shouldn't be there
+      // Remove any double GS
       v = v.replace(/\u001D\u001D/g, '\u001D');
+      
+      // Final pass to remove any remaining spaces just in case
+      v = v.replace(/\s/g, '');
     }
     
     if (type === 'sscc') {
@@ -205,7 +207,8 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
       }
 
       // Dosyanın Windows Notepad'de düzgün görünmesi için \r\n ile birleştirildi
-      const csvContent = csvLines.join('\r\n');
+      // Ancak Excel/Partner sistemleri bazen \r\r\n'den hoşlanmaz, o yüzden temizliyoruz.
+      const csvContent = csvLines.join('\n').replace(/\r/g, '').replace(/\n/g, '\r\n');
       const dateStr = productionDate || new Date().toLocaleDateString('tr-TR').replace(/\./g, '.');
       const fileName = `${orderNo}, GTIN, ${quantity}, ${productName}, ${dateStr}.csv`;
 
