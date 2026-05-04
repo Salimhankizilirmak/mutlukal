@@ -106,9 +106,9 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
         for (let i = startIdx; i < data.length; i++) {
           const row = data[i];
           if (!row || row.length === 0) continue;
-          let marka = cleanAndFormat(row[markaIdx], 'gtin');
-          let koli = cleanAndFormat(row[koliIdx], 'sscc');
-          let palet = cleanAndFormat(row[paletIdx], 'sscc');
+          const marka = cleanAndFormat(row[markaIdx], 'gtin');
+          const koli = cleanAndFormat(row[koliIdx], 'sscc');
+          const palet = cleanAndFormat(row[paletIdx], 'sscc');
 
           if (!marka && !koli && !palet) continue;
 
@@ -127,7 +127,7 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
           if (!data[i]) continue;
           const val = String(data[i][barcodeIdx] || '').trim();
           if (val.startsWith('01') || val.startsWith('(01)') || val.length >= 13) {
-            let cleaned = cleanAndFormat(val, 'gtin');
+            const cleaned = cleanAndFormat(val, 'gtin');
             if (cleaned) markalar.push(cleaned);
           }
         }
