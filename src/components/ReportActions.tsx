@@ -69,7 +69,14 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
       if (file.name.toLowerCase().endsWith('.csv')) {
         const text = await file.text();
         const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-        const separator = text.includes(';') ? ';' : (text.includes('\t') ? '\t' : ',');
+        
+        let separator = ',';
+        if (lines.length > 0) {
+          const firstLine = lines[0];
+          if (firstLine.includes('\t')) separator = '\t';
+          else if (firstLine.includes(';')) separator = ';';
+        }
+        
         data = lines.map(line => line.split(separator).map(col => col.trim()));
       } else {
         const buffer = await file.arrayBuffer();
@@ -167,7 +174,8 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
       const dateStr = productionDate || new Date().toLocaleDateString('tr-TR').replace(/\./g, '.');
       const fileName = `${orderNo}, GTIN, ${quantity}, ${productName}, ${dateStr}.csv`;
 
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+      // Excel'in Türkçe karakterleri ve UTF-8'i sorunsuz tanıması için BOM (\uFEFF) eklendi
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = fileName;
