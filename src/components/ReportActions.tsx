@@ -60,12 +60,11 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
       if (/^\d{13}$/.test(v)) v = '0' + v;
 
       // Restore GS (\u001D) separators for Russian crypto tails (AI 91 and AI 92).
-      // Scanners often omit the GS or replace it with a space. 
-      // We look for the 91[4chars]92 pattern and ensure proper \u001D prefixes.
-      // This handles: " 91XXXX 92", "91XXXX92", and already correct "\u001D91XXXX\u001D92"
-      v = v.replace(/[ \u001D]?91([A-Za-z0-9]{4})[ \u001D]?92/g, '\u001D91$1\u001D92');
+      // This regex handles missing GS, space-replaced GS, and existing GS correctly.
+      // We match 91, then any 4 characters, then 92, and ensure both 91 and 92 have the \u001D prefix.
+      v = v.replace(/([ \u001D]?)91(.{4})([ \u001D]?)92/g, '\u001D91$2\u001D92');
       
-      // Remove any double GS that might have been created if one was already there
+      // Remove any double GS that might have been created
       v = v.replace(/\u001D\u001D/g, '\u001D');
     }
     
@@ -119,32 +118,34 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
           startIdx = 0;
         }
 
-        const processedRows: { marka: string, koli: string, palet: string }[] = [];
+        const processedRows: { rawMarka: string, rawKoli: string, rawPalet: string }[] = [];
         
         for (let i = startIdx; i < data.length; i++) {
           const row = data[i];
           if (!row || row.length === 0) continue;
           
           const rawMarka = String(row[markaIdx] || '').trim();
-          const koli = cleanAndFormat(row[koliIdx], 'sscc');
-          const palet = cleanAndFormat(row[paletIdx], 'sscc');
+          const rawKoli = String(row[koliIdx] || '').trim();
+          const rawPalet = String(row[paletIdx] || '').trim();
 
-          // If this row doesn't start with '01' and we have a previous row, 
-          // it's a continuation of a split barcode. We merge it regardless of SSCC columns.
           if (processedRows.length > 0 && !rawMarka.startsWith('01') && !rawMarka.startsWith('(01)')) {
             const lastRow = processedRows[processedRows.length - 1];
-            lastRow.marka = cleanAndFormat(lastRow.marka + rawMarka, 'gtin');
+            // Merge raw strings first
+            lastRow.rawMarka += rawMarka;
             continue;
           }
 
-          const marka = cleanAndFormat(rawMarka, 'gtin');
-          if (!marka && !koli && !palet) continue;
+          if (!rawMarka && !rawKoli && !rawPalet) continue;
           
-          processedRows.push({ marka, koli, palet });
+          processedRows.push({ rawMarka, rawKoli, rawPalet });
         }
 
         for (const row of processedRows) {
-          csvLines.push(`${row.marka}\t${row.koli}\t${row.palet}`);
+          const marka = cleanAndFormat(row.rawMarka, 'gtin');
+          const koli = cleanAndFormat(row.rawKoli, 'sscc');
+          const palet = cleanAndFormat(row.rawPalet, 'sscc');
+          
+          csvLines.push(`${marka}\t${koli}\t${palet}`);
           quantity++;
         }
 
@@ -154,26 +155,25 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
         const barcodeColIdx = headerRow.findIndex(h => String(h).toLowerCase().includes('barkod') || String(h).toLowerCase().includes('kod') && !String(h).toLowerCase().includes('koli') && !String(h).toLowerCase().includes('palet'));
         const barcodeIdx = barcodeColIdx >= 0 ? barcodeColIdx : 1;
 
-        const markalar: string[] = [];
+        const rawMarkalar: string[] = [];
         for (let i = 1; i < data.length; i++) {
           if (!data[i]) continue;
           const val = String(data[i][barcodeIdx] || '').trim();
           if (!val) continue;
 
-          // Merge continuation lines in automatic mode as well
-          if (markalar.length > 0 && !val.startsWith('01') && !val.startsWith('(01)')) {
-            const lastIdx = markalar.length - 1;
-            markalar[lastIdx] = cleanAndFormat(markalar[lastIdx] + val, 'gtin');
+          // Merge continuation lines
+          if (rawMarkalar.length > 0 && !val.startsWith('01') && !val.startsWith('(01)')) {
+            rawMarkalar[rawMarkalar.length - 1] += val;
             continue;
           }
 
           if (val.startsWith('01') || val.startsWith('(01)') || val.length >= 13) {
-            const cleaned = cleanAndFormat(val, 'gtin');
-            if (cleaned) markalar.push(cleaned);
+            rawMarkalar.push(val);
           }
         }
 
-        if (markalar.length === 0) throw new Error('Geçerli markalama kodu (01...) bulunamadı.');
+        const cleanedMarkalar = rawMarkalar.map(m => cleanAndFormat(m, 'gtin')).filter(Boolean);
+        if (cleanedMarkalar.length === 0) throw new Error('Geçerli markalama kodu (01...) bulunamadı.');
 
         const GLN = "869882938";
         const EXTENSION = "2";
@@ -184,7 +184,7 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
         let currentKoliSSCC = "";
         let currentPaletSSCC = "";
 
-        for (let i = 0; i < markalar.length; i++) {
+        for (let i = 0; i < cleanedMarkalar.length; i++) {
           const isNewKoli = i % ipc === 0;
           const cartonNo = Math.floor(i / ipc) + 1;
           const isNewPalet = isNewKoli && ((cartonNo - 1) % cpp === 0);
@@ -198,9 +198,9 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
             serial++;
           }
 
-          csvLines.push(`${markalar[i]}\t${currentKoliSSCC}\t${currentPaletSSCC}`);
+          csvLines.push(`${cleanedMarkalar[i]}\t${currentKoliSSCC}\t${currentPaletSSCC}`);
         }
-        quantity = markalar.length;
+        quantity = cleanedMarkalar.length;
       }
 
       // Dosyanın Windows Notepad'de düzgün görünmesi için \r\n ile birleştirildi
