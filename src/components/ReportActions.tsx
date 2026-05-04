@@ -119,7 +119,7 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
 
           if (!marka && !koli && !palet) continue;
 
-          csvLines.push(`${marka};${koli};${palet};${productionDate};${expiryDate}`);
+          csvLines.push(`${marka}\t${koli}\t${palet}`);
           quantity++;
         }
 
@@ -164,7 +164,7 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
             serial++;
           }
 
-          csvLines.push(`${markalar[i]};${currentKoliSSCC};${currentPaletSSCC};${productionDate};${expiryDate}`);
+          csvLines.push(`${markalar[i]}\t${currentKoliSSCC}\t${currentPaletSSCC}`);
         }
         quantity = markalar.length;
       }
