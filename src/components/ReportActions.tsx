@@ -119,16 +119,35 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
           startIdx = 0;
         }
 
+        const processedRows: { marka: string, koli: string, palet: string }[] = [];
+        
         for (let i = startIdx; i < data.length; i++) {
           const row = data[i];
           if (!row || row.length === 0) continue;
-          const marka = cleanAndFormat(row[markaIdx], 'gtin');
+          
+          const rawMarka = String(row[markaIdx] || '').trim();
           const koli = cleanAndFormat(row[koliIdx], 'sscc');
           const palet = cleanAndFormat(row[paletIdx], 'sscc');
 
-          if (!marka && !koli && !palet) continue;
+          // If this row doesn't start with '01' and we have a previous row, 
+          // it's likely a continuation of a split barcode.
+          if (processedRows.length > 0 && !rawMarka.startsWith('01') && !rawMarka.startsWith('(01)')) {
+            const lastRow = processedRows[processedRows.length - 1];
+            // Only merge if SSCCs match or the current row has no SSCCs (pure continuation)
+            if (!koli || koli === lastRow.koli) {
+              lastRow.marka = cleanAndFormat(lastRow.marka + rawMarka, 'gtin');
+              continue;
+            }
+          }
 
-          csvLines.push(`${marka}\t${koli}\t${palet}`);
+          const marka = cleanAndFormat(rawMarka, 'gtin');
+          if (!marka && !koli && !palet) continue;
+          
+          processedRows.push({ marka, koli, palet });
+        }
+
+        for (const row of processedRows) {
+          csvLines.push(`${row.marka}\t${row.koli}\t${row.palet}`);
           quantity++;
         }
 
