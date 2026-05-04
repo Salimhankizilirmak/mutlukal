@@ -15,6 +15,7 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
   const [gtin, setGtin] = useState('');
   const [productName, setProductName] = useState('');
   const [productionDate, setProductionDate] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
   const [itemsPerCarton, setItemsPerCarton] = useState('30');
   const [cartonsPerPallet, setCartonsPerPallet] = useState('84');
   const [startingSerial, setStartingSerial] = useState(() => String(Math.floor(Math.random() * 8999999) + 1000000));
@@ -100,8 +101,8 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
           serial++;
         }
 
-        // FORMAT: Marka \t Koli \t Palet
-        csvLines.push(`${markalar[i]}\t${currentKoliSSCC}\t${currentPaletSSCC}`);
+        // FORMAT: Marka \t Koli \t Palet \t Üretim Tarihi \t Son Kullanma Tarihi
+        csvLines.push(`${markalar[i]}\t${currentKoliSSCC}\t${currentPaletSSCC}\t${productionDate}\t${expiryDate}`);
       }
 
       const csvContent = csvLines.join('\n');
@@ -157,15 +158,20 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block font-bold">Ürün Adı</label>
               <input value={productName} onChange={e => setProductName(e.target.value)} placeholder="Urun"
                 className="w-full bg-[#09090b] border border-zinc-800 rounded-lg px-3 py-2 text-zinc-200 text-sm outline-none focus:border-amber-500/50" />
             </div>
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block font-bold">Tarih</label>
+              <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block font-bold">Üretim Tarihi</label>
               <input value={productionDate} onChange={e => setProductionDate(e.target.value)} placeholder="01.01.2024"
+                className="w-full bg-[#09090b] border border-zinc-800 rounded-lg px-3 py-2 text-zinc-200 text-sm outline-none focus:border-amber-500/50" />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block font-bold">Son K. Tarihi</label>
+              <input value={expiryDate} onChange={e => setExpiryDate(e.target.value)} placeholder="01.01.2025"
                 className="w-full bg-[#09090b] border border-zinc-800 rounded-lg px-3 py-2 text-zinc-200 text-sm outline-none focus:border-amber-500/50" />
             </div>
           </div>
