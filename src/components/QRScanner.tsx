@@ -13,7 +13,8 @@ export function QRScanner({ onScan, fps = 10, qrbox = 250 }: QRScannerProps) {
 
   useEffect(() => {
     html5QrCode.current = new Html5Qrcode("qr-reader", {
-      formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.DATA_MATRIX ]
+      formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.DATA_MATRIX ],
+      verbose: false
     });
 
     const config = { fps, qrbox };
