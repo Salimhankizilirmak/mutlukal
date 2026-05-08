@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { RefreshCw, Scissors, FileCode, ShieldAlert, ArrowRight } from 'lucide-react';
+import { RefreshCw, Scissors, FileCode, ShieldAlert, ArrowRight, Smartphone } from 'lucide-react';
 
 const tools = [
   {
@@ -33,6 +33,14 @@ const tools = [
     icon: ShieldAlert,
     color: 'text-red-400',
     bg: 'bg-red-400/10',
+  },
+  {
+    title: 'Mobil Agent (QR Scanner)',
+    description: 'Sahada ürün değişimi ve koli denetimi yapmanızı sağlar. QR okutarak hızlıca işlem yapın.',
+    href: '/dashboard/gs1/mobile-agent',
+    icon: Smartphone,
+    color: 'text-zinc-100',
+    bg: 'bg-zinc-100/10',
   },
 ];
 
