@@ -65,13 +65,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#18181b]/95 backdrop-blur-xl border-t border-zinc-800/50 flex justify-around p-3 z-50">
-        <Link href="/dashboard/lines" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><Activity size={24} /><span className="text-[10px]">Hatlar</span></Link>
-        <Link href="/dashboard/devices" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><MonitorDot size={24} /><span className="text-[10px]">Cihazlar</span></Link>
-        <Link href="/dashboard/batches" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><SendToBack size={24} /><span className="text-[10px]">İş Emirleri</span></Link>
-        <Link href="/dashboard/reports" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><FileText size={24} /><span className="text-[10px]">Raporlar</span></Link>
-        <Link href="/dashboard/employees" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400"><Users size={24} /><span className="text-[10px]">Personel</span></Link>
-        {isAdmin && <Link href="/dashboard/super-admin" className="flex flex-col items-center gap-1 text-amber-500 hover:text-amber-400"><ShieldAlert size={24} /><span className="text-[10px]">Admin</span></Link>}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#18181b]/95 backdrop-blur-xl border-t border-zinc-800/50 z-50">
+        <div className="flex overflow-x-auto no-scrollbar items-center justify-start px-4 py-3 gap-6">
+          <Link href="/dashboard/lines" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400 shrink-0"><Activity size={22} /><span className="text-[9px] font-medium">Hatlar</span></Link>
+          <Link href="/dashboard/devices" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400 shrink-0"><MonitorDot size={22} /><span className="text-[9px] font-medium">Cihazlar</span></Link>
+          <Link href="/dashboard/batches" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400 shrink-0"><SendToBack size={22} /><span className="text-[9px] font-medium">İş Emirleri</span></Link>
+          <Link href="/dashboard/reports" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400 shrink-0"><FileText size={22} /><span className="text-[9px] font-medium">Raporlar</span></Link>
+          <Link href="/dashboard/gs1" className="flex flex-col items-center gap-1 text-amber-500 hover:text-amber-400 shrink-0"><FileText size={22} /><span className="text-[9px] font-medium">GS1</span></Link>
+          <Link href="/dashboard/gs1/mobile-agent" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400 shrink-0"><Smartphone size={22} /><span className="text-[9px] font-medium">Agent</span></Link>
+          <Link href="/dashboard/employees" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400 shrink-0"><Users size={22} /><span className="text-[9px] font-medium">Personel</span></Link>
+          {isAdmin && <Link href="/dashboard/super-admin" className="flex flex-col items-center gap-1 text-red-500 hover:text-red-400 shrink-0"><ShieldAlert size={22} /><span className="text-[9px] font-medium">Admin</span></Link>}
+        </div>
       </nav>
     </div>
   );

@@ -60,7 +60,7 @@ export function FileDropzone({ onFileSelect, accept, label }: FileDropzoneProps)
           onDrop={handleDrop}
           onClick={() => inputRef.current?.click()}
           className={`
-            relative w-full aspect-[4/1] flex flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all cursor-pointer
+            relative w-full min-h-[120px] py-4 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all cursor-pointer
             ${isDragging ? 'border-amber-500 bg-amber-500/5' : 'border-zinc-800 hover:border-zinc-700 bg-zinc-900/30'}
           `}
         >

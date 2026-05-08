@@ -57,21 +57,21 @@ export default function GS1Dashboard() {
           <Link
             key={tool.href}
             href={tool.href}
-            className="group relative bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 hover:border-zinc-700 transition-all shadow-xl"
+            className="group relative bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 sm:p-6 hover:border-zinc-700 transition-all shadow-xl"
           >
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-4">
-                <div className={`p-3 ${tool.bg} rounded-xl`}>
-                  <tool.icon className={tool.color} size={24} />
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start sm:items-center gap-3 sm:gap-4">
+                <div className={`p-2 sm:p-3 ${tool.bg} rounded-xl shrink-0`}>
+                  <tool.icon className={tool.color} size={20} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-zinc-100 group-hover:text-white transition-colors">
+                  <h3 className="text-sm sm:text-lg font-bold text-zinc-100 group-hover:text-white transition-colors">
                     {tool.title}
                   </h3>
-                  <p className="text-sm text-zinc-500 mt-1">{tool.description}</p>
+                  <p className="text-[11px] sm:text-sm text-zinc-500 mt-0.5 sm:mt-1 leading-relaxed">{tool.description}</p>
                 </div>
               </div>
-              <ArrowRight className="text-zinc-700 group-hover:text-zinc-500 transition-colors" size={20} />
+              <ArrowRight className="text-zinc-700 group-hover:text-zinc-500 transition-colors shrink-0 mt-1 sm:mt-0" size={18} />
             </div>
           </Link>
         ))}
