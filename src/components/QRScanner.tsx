@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 interface QRScannerProps {
   onScan: (text: string) => void;
@@ -9,34 +9,42 @@ interface QRScannerProps {
 }
 
 export function QRScanner({ onScan, fps = 10, qrbox = 250 }: QRScannerProps) {
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const html5QrCode = useRef<Html5Qrcode | null>(null);
 
   useEffect(() => {
-    scannerRef.current = new Html5QrcodeScanner(
-      'qr-reader',
-      { fps, qrbox, rememberLastUsedCamera: true },
-      /* verbose= */ false
-    );
+    html5QrCode.current = new Html5Qrcode("qr-reader", {
+      formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.DATA_MATRIX ]
+    });
 
-    scannerRef.current.render(
+    const config = { fps, qrbox };
+
+    html5QrCode.current.start(
+      { facingMode: "environment" }, 
+      config,
       (decodedText) => {
         onScan(decodedText);
       },
       () => {
-        // Just ignore errors
+        // Suppress errors
       }
-    );
+    ).catch(err => {
+      console.error("Camera start error:", err);
+    });
 
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(err => console.error("Failed to clear scanner", err));
+      if (html5QrCode.current) {
+        if (html5QrCode.current.isScanning) {
+          html5QrCode.current.stop().then(() => {
+            html5QrCode.current?.clear();
+          }).catch(err => console.error("Stop error", err));
+        }
       }
     };
   }, [onScan, fps, qrbox]);
 
   return (
-    <div className="w-full max-w-sm mx-auto overflow-hidden rounded-2xl border-2 border-zinc-800 bg-black">
-      <div id="qr-reader" className="w-full" />
+    <div className="w-full max-w-sm mx-auto overflow-hidden rounded-2xl border-2 border-zinc-800 bg-black relative aspect-square">
+      <div id="qr-reader" className="w-full h-full" />
     </div>
   );
 }
