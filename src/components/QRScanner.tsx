@@ -8,16 +8,29 @@ interface QRScannerProps {
   qrbox?: number;
 }
 
-export function QRScanner({ onScan, fps = 10, qrbox = 250 }: QRScannerProps) {
+export function QRScanner({ onScan, fps = 20, qrbox = 280 }: QRScannerProps) {
   const html5QrCode = useRef<Html5Qrcode | null>(null);
 
   useEffect(() => {
     html5QrCode.current = new Html5Qrcode("qr-reader", {
-      formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.DATA_MATRIX ],
+      formatsToSupport: [ 
+        Html5QrcodeSupportedFormats.QR_CODE, 
+        Html5QrcodeSupportedFormats.DATA_MATRIX,
+        Html5QrcodeSupportedFormats.CODE_128
+      ],
       verbose: false
     });
 
-    const config = { fps, qrbox };
+    const config = { 
+      fps, 
+      qrbox: (viewFinderWidth: number, viewFinderHeight: number) => {
+        return {
+          width: viewFinderWidth * 0.8,
+          height: viewFinderHeight * 0.8
+        };
+      },
+      aspectRatio: 1.0
+    };
 
     html5QrCode.current.start(
       { facingMode: "environment" }, 

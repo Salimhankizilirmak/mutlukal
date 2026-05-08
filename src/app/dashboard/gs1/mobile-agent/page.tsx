@@ -21,12 +21,20 @@ export default function MobileAgentPage() {
   const [scanMode, setScanMode] = useState<'audit' | 'replace'>('audit');
   const [foundRow, setFoundRow] = useState<CSVRow | null>(null);
   const [newCodeStep, setNewCodeStep] = useState(false);
+  const [lastScanned, setLastScanned] = useState('');
+
+  // Helper to clean codes for comparison
+  const normalizeCode = (c: string) => {
+    // Remove (01), (00), \x1d, spaces and leading zeros
+    return c.replace(/\(01\)|\(00\)|\u001d|\s/g, '').replace(/^0+/, '');
+  };
 
   // Load CSV
   const handleFileSelect = async (f: File) => {
     setFile(f);
     setError('');
     setData([]);
+    setLastScanned('');
     
     try {
       const text = await f.text();
@@ -51,21 +59,25 @@ export default function MobileAgentPage() {
       setSuccess(`${rows.length} satır yüklendi.`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Dosya yükleme hatası.');
-    } finally {
-      // Done
     }
   };
 
   const handleScan = (text: string) => {
+    const cleaned = text.trim();
+    setLastScanned(cleaned);
+
     // If we are waiting for a new code for replacement
     if (newCodeStep && foundRow) {
-      handleReplace(text);
+      handleReplace(cleaned);
       return;
     }
 
-    // Search for code
-    const cleaned = text.trim();
-    const match = data.find(row => row.product.includes(cleaned) || cleaned.includes(row.product));
+    // Search for code using normalized comparison
+    const normScanned = normalizeCode(cleaned);
+    const match = data.find(row => {
+      const normRow = normalizeCode(row.product);
+      return normRow === normScanned || normRow.includes(normScanned) || normScanned.includes(normRow);
+    });
     
     if (match) {
       setFoundRow(match);
@@ -149,6 +161,13 @@ export default function MobileAgentPage() {
                 {newCodeStep ? 'YENİ ÜRÜN KODUNU OKUTUN' : 'MEVCUT ÜRÜN KODUNU OKUTUN'}
               </p>
               <QRScanner onScan={handleScan} />
+              
+              {lastScanned && (
+                <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-3 animate-in fade-in duration-300">
+                  <p className="text-[9px] font-bold text-zinc-500 uppercase mb-1">Son Okunan Ham Veri</p>
+                  <p className="text-[10px] font-mono text-zinc-400 break-all leading-relaxed">{lastScanned}</p>
+                </div>
+              )}
             </div>
 
             {foundRow && (
