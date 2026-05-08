@@ -27,6 +27,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <Link href="/dashboard/batches" className="flex items-center gap-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/30 p-3 rounded-lg transition-all"><SendToBack size={20} /> İş Emirleri</Link>
           <Link href="/dashboard/reports" className="flex items-center gap-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/30 p-3 rounded-lg transition-all"><FileText size={20} /> Raporlar</Link>
           <Link href="/dashboard/employees" className="flex items-center gap-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/30 p-3 rounded-lg transition-all"><Users size={20} /> Personeller</Link>
+          <Link href="/dashboard/gs1" className="flex items-center gap-3 text-amber-400 hover:bg-amber-400/10 p-3 rounded-lg transition-all"><FileText size={20} /> GS1 Araçları</Link>
           {isAdmin && <Link href="/dashboard/super-admin" className="flex items-center gap-3 text-amber-500 hover:bg-amber-500/10 p-3 rounded-lg transition-all mt-8 border border-amber-500/20"><ShieldAlert size={20} /> Süper Admin</Link>}
         </nav>
         
