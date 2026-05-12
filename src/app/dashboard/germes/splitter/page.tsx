@@ -15,7 +15,7 @@ interface SubsetConfig {
 interface SplitResult {
   fileName: string;
   count: number;
-  content: string;
+  buffer: ArrayBuffer;
 }
 
 const cleanAndFormat = (val: string) => {
@@ -132,27 +132,40 @@ export default function GermesSplitterPage() {
         const chunk = availableProducts.slice(currentIndex, currentIndex + conf.count);
         currentIndex += conf.count;
 
-        // Build clean single column format ready for downstream tool
-        const csvContent = '\ufeff' + chunk.join('\r\n');
-        const cleanName = conf.fileName.endsWith('.csv') ? conf.fileName : `${conf.fileName}.csv`;
+        // Build clean sheet mapping array: header + rows
+        const sheetData = [['Kod'], ...chunk.map(code => [code])];
+        const newWb = XLSX.utils.book_new();
+        const newWs = XLSX.utils.aoa_to_sheet(sheetData);
+        XLSX.utils.book_append_sheet(newWb, newWs, 'Kodlar');
+
+        // Output binary buffer specifically as native XLSX spreadsheet
+        const wbBuffer = XLSX.write(newWb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer;
+
+        let cleanName = conf.fileName.trim();
+        if (cleanName.toLowerCase().endsWith('.csv')) {
+          cleanName = cleanName.slice(0, -4);
+        }
+        if (!cleanName.toLowerCase().endsWith('.xlsx')) {
+          cleanName += '.xlsx';
+        }
 
         processedOutcomes.push({
           fileName: cleanName,
           count: chunk.length,
-          content: csvContent,
+          buffer: wbBuffer,
         });
       }
 
       setResults(processedOutcomes);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Parçalama sırasında bilinmeyen bir hata oluştu.');
+      setError(err instanceof Error ? err.message : 'Parçalama ve XLSX dönüştürme sırasında bilinmeyen bir hata oluştu.');
     } finally {
       setLoading(false);
     }
   };
 
-  const triggerDownload = (fileName: string, content: string) => {
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+  const triggerDownload = (fileName: string, buffer: ArrayBuffer) => {
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -176,7 +189,7 @@ export default function GermesSplitterPage() {
 
       <GS1ToolCard
         title="Çoklu Dosya Parçalayıcı (Multi-Splitter)"
-        description="Fazla koli kodlarını içeren kaynak dosyayı belirlediğiniz isim ve satır sayılarına göre ardışık dilimlere ayırır."
+        description="Fazla koli kodlarını içeren kaynak dosyayı belirlediğiniz isim ve satır sayılarına göre ardışık dilimlere ayırır ve XLSX formatında verir."
         icon={Scissors}
       >
         <div className="space-y-6">
@@ -289,7 +302,7 @@ export default function GermesSplitterPage() {
             <div className="pt-4 border-t border-zinc-800/80 space-y-3">
               <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                Parçalama Başarılı! Çıktı Dosyalarınız Hazır:
+                Parçalama Başarılı! XLSX Çıktı Dosyalarınız Hazır:
               </h4>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -305,7 +318,7 @@ export default function GermesSplitterPage() {
                     </div>
 
                     <button
-                      onClick={() => triggerDownload(res.fileName, res.content)}
+                      onClick={() => triggerDownload(res.fileName, res.buffer)}
                       className="flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-2 rounded-lg text-xs font-bold transition-colors shrink-0"
                     >
                       <Download size={14} />
