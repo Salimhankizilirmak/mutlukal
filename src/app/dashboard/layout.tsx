@@ -2,7 +2,7 @@ import { isSuperAdmin } from '@/lib/roles';
 import { getFactoryContext } from '@/lib/auth-context';
 import { UserButton, OrganizationSwitcher } from '@clerk/nextjs';
 import Link from 'next/link';
-import { Activity, MonitorDot, SendToBack, ShieldAlert, FileText, Users, Smartphone } from 'lucide-react';
+import { Activity, MonitorDot, SendToBack, ShieldAlert, FileText, Users, Smartphone, Flower } from 'lucide-react';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const isAdmin = await isSuperAdmin();
@@ -29,6 +29,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <Link href="/dashboard/employees" className="flex items-center gap-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/30 p-3 rounded-lg transition-all"><Users size={20} /> Personeller</Link>
           <Link href="/dashboard/gs1" className="flex items-center gap-3 text-amber-400 hover:bg-amber-400/10 p-3 rounded-lg transition-all"><FileText size={20} /> GS1 Araçları</Link>
           <Link href="/dashboard/gs1/mobile-agent" className="flex items-center gap-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/30 p-3 rounded-lg transition-all"><Smartphone size={20} /> Mobil Agent</Link>
+          <Link href="/dashboard/germes" className="flex items-center gap-3 text-pink-400 hover:bg-pink-400/10 p-3 rounded-lg transition-all"><Flower size={20} /> Hanami Germes</Link>
           {isAdmin && <Link href="/dashboard/super-admin" className="flex items-center gap-3 text-amber-500 hover:bg-amber-500/10 p-3 rounded-lg transition-all mt-8 border border-amber-500/20"><ShieldAlert size={20} /> Süper Admin</Link>}
         </nav>
         
@@ -73,6 +74,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <Link href="/dashboard/reports" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400 shrink-0"><FileText size={22} /><span className="text-[9px] font-medium">Raporlar</span></Link>
           <Link href="/dashboard/gs1" className="flex flex-col items-center gap-1 text-amber-500 hover:text-amber-400 shrink-0"><FileText size={22} /><span className="text-[9px] font-medium">GS1</span></Link>
           <Link href="/dashboard/gs1/mobile-agent" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400 shrink-0"><Smartphone size={22} /><span className="text-[9px] font-medium">Agent</span></Link>
+          <Link href="/dashboard/germes" className="flex flex-col items-center gap-1 text-pink-500 hover:text-pink-400 shrink-0"><Flower size={22} /><span className="text-[9px] font-medium">Germes</span></Link>
           <Link href="/dashboard/employees" className="flex flex-col items-center gap-1 text-zinc-400 hover:text-emerald-400 shrink-0"><Users size={22} /><span className="text-[9px] font-medium">Personel</span></Link>
           {isAdmin && <Link href="/dashboard/super-admin" className="flex flex-col items-center gap-1 text-red-500 hover:text-red-400 shrink-0"><ShieldAlert size={22} /><span className="text-[9px] font-medium">Admin</span></Link>}
         </div>
