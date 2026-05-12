@@ -34,3 +34,19 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Agent and temporary storage artifacts
+.gemini
+scratch/
+public/**/*.csv
+public/**/*.xlsx
+public/**/*.xls
+public/**/*.zip
+public/ONAYSIZ/
+public/ZP*/
+public/TR*/
+public/kb-*/
+public/Germes/
+public/tr28-2/
+public/Gökhan*/
+public/Makine*/

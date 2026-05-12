@@ -4,11 +4,14 @@ import path from 'path';
 
 const STATE_FILE = path.join(process.cwd(), 'public', 'global_sscc_state.txt');
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET() {
   try {
     if (!fs.existsSync(STATE_FILE)) {
-      // Default initial value if not exists
-      return NextResponse.json({ state: '00286988293850000001' });
+      // Default initial value with 004 prefix and valid structure
+      return NextResponse.json({ state: '00486988293800000017' });
     }
     const state = fs.readFileSync(STATE_FILE, 'utf8').trim();
     return NextResponse.json({ state });

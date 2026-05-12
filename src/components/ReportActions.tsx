@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Download, RefreshCw, X, Loader2, FileDown, FileJson } from 'lucide-react';
 import { getBatchDownloadUrl } from '@/actions/batch';
 import * as XLSX from 'xlsx';
@@ -19,10 +19,30 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
   const [hasExistingHierarchy, setHasExistingHierarchy] = useState(false);
   const [itemsPerCarton, setItemsPerCarton] = useState('30');
   const [cartonsPerPallet, setCartonsPerPallet] = useState('84');
-  const [startingSerial, setStartingSerial] = useState(() => String(Math.floor(Math.random() * 8999999) + 1000000));
+  const [startingSerial, setStartingSerial] = useState('1');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    async function fetchActiveState() {
+      try {
+        const res = await fetch(`/api/sscc/state?t=${Date.now()}`, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.state && data.state.length === 20) {
+            // Extract the 7-digit serial part from "004869882938XXXXXXXC"
+            const serialPart = data.state.slice(12, 19);
+            const parsedSerial = parseInt(serialPart, 10);
+            if (!isNaN(parsedSerial)) {
+              setStartingSerial(String(parsedSerial));
+            }
+          }
+        }
+      } catch {}
+    }
+    fetchActiveState();
+  }, []);
 
   const calculateCheckDigit = (number: string) => {
     const digits = number.split('').map(Number);
@@ -179,31 +199,32 @@ function ConvertModal({ workOrderNo, onClose }: ConvertModalProps) {
         if (cleanedMarkalar.length === 0) throw new Error('Geçerli markalama kodu (01...) bulunamadı.');
 
         const GLN = "869882938";
-        const EXTENSION = "2";
+        const EXTENSION = "4";
         const ipc = parseInt(itemsPerCarton) || 30;
-        const cpp = parseInt(cartonsPerPallet) || 84;
         let serial = parseInt(startingSerial) || 1000000;
 
         let currentKoliSSCC = "";
-        let currentPaletSSCC = "";
 
         for (let i = 0; i < cleanedMarkalar.length; i++) {
           const isNewKoli = i % ipc === 0;
-          const cartonNo = Math.floor(i / ipc) + 1;
-          const isNewPalet = isNewKoli && ((cartonNo - 1) % cpp === 0);
 
           if (isNewKoli) {
-            if (isNewPalet) {
-              currentPaletSSCC = generateSSCC(EXTENSION, GLN, serial);
-              serial++;
-            }
             currentKoliSSCC = generateSSCC(EXTENSION, GLN, serial);
             serial++;
           }
 
-          csvLines.push(`${cleanedMarkalar[i]}\t${currentKoliSSCC}\t${currentPaletSSCC}`);
+          csvLines.push(`${cleanedMarkalar[i]}\t${currentKoliSSCC}`);
         }
         quantity = cleanedMarkalar.length;
+
+        // Automatically update the global counter sequence so future batches seamlessly continue
+        const nextActiveSSCC = generateSSCC(EXTENSION, GLN, serial);
+        fetch('/api/sscc/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: nextActiveSSCC }),
+          cache: 'no-store',
+        }).catch(() => {});
       }
 
       // Dosyanın Windows Notepad'de düzgün görünmesi için \r\n ile birleştirildi

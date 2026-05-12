@@ -1,11 +1,26 @@
 'use client';
-import { useState } from 'react';
-import { RefreshCw, Loader2, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { RefreshCw, Loader2, AlertCircle, Hash } from 'lucide-react';
 import { GS1ToolCard } from '@/components/GS1ToolCard';
 import { FileDropzone } from '@/components/FileDropzone';
 import { generateNextSSCC } from '@/lib/gs1';
-import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+
+const cleanAndFormat = (val: string) => {
+  if (!val) return '';
+  let v = String(val).replace(/^[\u200B-\u200D\uFEFF\s]+|[\u200B-\u200D\uFEFF\s]+$/g, '');
+  if (/^[\d.]+e[+\-]\d+$/i.test(v)) {
+    try { v = BigInt(Math.round(Number(v))).toString(); } catch {}
+  }
+  if (v.startsWith('(01)')) v = v.substring(4);
+  if (v.startsWith('(00)')) v = v.substring(4);
+  
+  if (/^\d{13}$/.test(v)) v = '0' + v;
+  v = v.replace(/\s*91(.{4})\s*92/g, '\u001D91$1\u001D92');
+  v = v.replace(/\u001D\u001D/g, '\u001D');
+  v = v.replace(/\s/g, '');
+  return v;
+};
 
 export default function ReconcilePage() {
   const [reportFile, setReportFile] = useState<File | null>(null);
@@ -14,6 +29,27 @@ export default function ReconcilePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [activeStateSSCC, setActiveStateSSCC] = useState<string>('');
+  const [fetchingState, setFetchingState] = useState(false);
+
+  const fetchCurrentState = useCallback(async () => {
+    setFetchingState(true);
+    try {
+      const res = await fetch(`/api/sscc/state?t=${Date.now()}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.state) setActiveStateSSCC(data.state);
+      }
+    } catch {
+      // Silently handle state fetch failures
+    } finally {
+      setFetchingState(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCurrentState();
+  }, [fetchCurrentState]);
 
   const handleProcess = async () => {
     if (!reportFile || !refFile) { setError('Lütfen her iki dosyayı da seçin.'); return; }
@@ -24,64 +60,95 @@ export default function ReconcilePage() {
     setSuccess('');
 
     try {
-      // 1. Fetch current SSCC state
-      const ssccRes = await fetch('/api/sscc/state');
+      // 1. Fetch current SSCC state with cache busting
+      const ssccRes = await fetch(`/api/sscc/state?t=${Date.now()}`, { cache: 'no-store' });
       const { state: startSSCC } = await ssccRes.json();
       
-      // 2. Parse Excel Report (Completed)
+      if (!startSSCC || !startSSCC.startsWith('004')) {
+        console.warn('Aktif SSCC 004 önekiyle başlamıyor veya okunamadı. Mevcut durum:', startSSCC);
+      }
+
+      // 2. Parse Excel Report (Completed Baseline Pool)
       const reportBuffer = await reportFile.arrayBuffer();
       const reportWb = XLSX.read(reportBuffer, { type: 'array' });
       const reportWs = reportWb.Sheets[reportWb.SheetNames[0]];
       const reportData = XLSX.utils.sheet_to_json(reportWs, { header: 1 }) as string[][];
       
       const completedCodes = new Set<string>();
-      reportData.forEach(row => {
-        if (row[0]) completedCodes.add(String(row[0]).trim());
-      });
+      const finalProds: string[] = [];
 
-      // 3. Parse Reference CSV
+      // Avoid pushing the header row ("Kod") into our dataset
+      for (let i = 0; i < reportData.length; i++) {
+        const row = reportData[i];
+        if (!row || !row[0]) continue;
+        const rawStr = String(row[0]).trim();
+        // Skip literal header strings
+        if (rawStr.toLowerCase().includes('kod') || rawStr.toLowerCase().includes('tarih')) continue;
+        
+        const cleaned = cleanAndFormat(rawStr);
+        if (cleaned) {
+          completedCodes.add(cleaned);
+          finalProds.push(cleaned);
+        }
+      }
+
+      // 3. Parse Reference CSV Pool
       const refText = await refFile.text();
       const cleanRefText = refText.startsWith('\ufeff') ? refText.slice(1) : refText;
-      const refResults = Papa.parse(cleanRefText, { delimiter: '\t', skipEmptyLines: true });
-      const refRows = (refResults.data as string[][]).map(r => r[0]);
+      const refLines = cleanRefText.split(/\r?\n/).filter(l => l.trim() !== '');
+
+      const refProds: string[] = [];
+      for (const line of refLines) {
+        const firstCol = line.split('\t')[0].trim();
+        if (firstCol.startsWith('01') || firstCol.startsWith('(01)') || firstCol.length >= 13) {
+          refProds.push(firstCol);
+        } else if (refProds.length > 0) {
+          refProds[refProds.length - 1] += " " + firstCol;
+        }
+      }
+
+      const cleanedRefProds = refProds.map(cleanAndFormat).filter(Boolean);
 
       // 4. Reconciliation Logic
-      const remainingCodes = refRows.filter(code => !completedCodes.has(code));
-      const totalNeeded = targetCount - completedCodes.size;
+      const remainingCodes = cleanedRefProds.filter(code => !completedCodes.has(code));
+      const totalNeeded = targetCount - finalProds.length;
       
-      if (totalNeeded < 0) throw new Error('Tamamlanan kod adedi hedef adetten fazla.');
+      if (totalNeeded < 0) {
+        throw new Error(`Tamamlanan kod adedi (${finalProds.length}) hedef adetten (${targetCount}) fazla.`);
+      }
       
       const selectedRemaining = remainingCodes.slice(0, totalNeeded);
-      
-      // We combine them (Report + Selected Remaining)
-      // Actually, user wants the result to follow the structure from the start
-      // So we take everything from report data first, then add from remaining.
-      
-      const finalProds: string[] = [];
-      reportData.forEach(row => {
-        if (row[0]) finalProds.push(String(row[0]).trim());
-      });
       finalProds.push(...selectedRemaining);
 
-      // 5. Generate SSCC
+      if (finalProds.length !== targetCount) {
+        throw new Error(`Hedef adede ulaşılamadı. Eksik satır sayısı yetersiz. Toplam elde edilen: ${finalProds.length}`);
+      }
+
+      // 5. Generate continuous carton SSCC codes without pallet codes layer
       let currentSSCC = startSSCC;
       const finalLines: string[] = [];
+      
       for (let i = 0; i < finalProds.length; i++) {
-        if (i > 0 && i % 30 === 0) {
+        const isNewKoli = i % 30 === 0;
+        if (i > 0 && isNewKoli) {
           currentSSCC = generateNextSSCC(currentSSCC);
         }
         finalLines.push(`${finalProds[i]}\t${currentSSCC}`);
       }
 
-      // 6. Update global state
+      // 6. Update global state seamlessly
       const nextSSCC = generateNextSSCC(currentSSCC);
       await fetch('/api/sscc/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state: nextSSCC }),
+        cache: 'no-store',
       });
 
-      // 7. Download
+      // Synchronize local UI preview with fresh state
+      setActiveStateSSCC(nextSSCC);
+
+      // 7. Download output CSV
       const output = '\ufeff' + finalLines.join('\r\n');
       const blob = new Blob([output], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -93,7 +160,7 @@ export default function ReconcilePage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      setSuccess(`İşlem başarıyla tamamlandı. ${finalProds.length} satır oluşturuldu.`);
+      setSuccess(`İşlem başarıyla tamamlandı. ${finalProds.length} satır oluşturuldu ve koli zinciri temizlendi.`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Bir hata oluştu.');
     } finally {
@@ -109,6 +176,29 @@ export default function ReconcilePage() {
         icon={RefreshCw}
       >
         <div className="space-y-6">
+          {/* Active Sequence Tracker Indicator */}
+          <div className="flex items-center justify-between p-3.5 bg-zinc-950 border border-zinc-800 rounded-xl">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-amber-500/10 rounded-lg text-amber-500">
+                <Hash size={16} />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">Sıradaki Koli Başlangıç Serisi</p>
+                <p className="text-xs font-mono font-semibold text-amber-400 mt-0.5">
+                  {fetchingState ? 'Yükleniyor...' : activeStateSSCC || 'Okunamadı'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={fetchCurrentState}
+              disabled={fetchingState}
+              title="Sayacı Güncelle"
+              className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 rounded-lg transition-colors"
+            >
+              <RefreshCw size={14} className={fetchingState ? 'animate-spin' : ''} />
+            </button>
+          </div>
+
           <FileDropzone
             label="1. Tamamlananlar Listesi (Excel)"
             accept=".xlsx,.xls"
@@ -133,14 +223,14 @@ export default function ReconcilePage() {
 
           {error && (
             <div className="flex items-center gap-3 p-4 bg-red-500/5 border border-red-500/20 rounded-2xl text-red-400 text-xs">
-              <AlertCircle size={18} />
+              <AlertCircle size={18} className="shrink-0" />
               <p>{error}</p>
             </div>
           )}
 
           {success && (
             <div className="flex items-center gap-3 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl text-emerald-400 text-xs">
-              <AlertCircle size={18} />
+              <AlertCircle size={18} className="shrink-0" />
               <p>{success}</p>
             </div>
           )}
