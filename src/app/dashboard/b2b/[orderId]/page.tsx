@@ -59,6 +59,8 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
   const [expandedPhase2, setExpandedPhase2] = useState(false);
   const [expandedPhase3, setExpandedPhase3] = useState(false);
   const [expandedPhase4, setExpandedPhase4] = useState(false);
+  const [sendingMail, setSendingMail] = useState(false);
+  const [mailSuccess, setMailSuccess] = useState(false);
 
   // Phase 1 Custom filename state
   const [customPhase1Name, setCustomPhase1Name] = useState('');
@@ -430,31 +432,65 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       document.body.removeChild(a);
       URL.revokeObjectURL(downloadUrl);
 
-      // 8. Auto-Mail Automation
-      try {
-        const firstSSCC = finalLines[0].split('\t')[1];
-        const lastSSCC = finalLines[finalLines.length - 1].split('\t')[1];
-        const ssccRange = `${firstSSCC} - ${lastSSCC}`;
-        
-        await sendB2BReportEmail(params.orderId, cloudUrl, targetDeliverableName, {
-          vehicleCode: targetItem?.vehicleCode || o.orderName.split(' • ')[0],
-          orderCode: currentOrderCode,
-          ssccRange,
-          prodDate,
-          expDate: sktDate,
-          batchNo: targetItem?.batchNo || "Bilinmiyor"
-        });
-        setSuccess(`✔ Rapor Hazırlandı ve Mail Gönderildi! Alıcı: k.can@mutlukal.com.tr`);
-      } catch (mailErr: any) {
-        console.error('Auto-mail failed:', mailErr);
-        setSuccess(`✔ Rapor Hazırlandı ancak Mail Gönderilemedi: ${mailErr.message}`);
-      }
-
       await fetchOrder();
+      setSuccess(`✔ Rapor Başarıyla Hazırlandı! Toplam ${finalProds.length} ürüne koli kodları atandı, buluta yedeklendi ve indirildi.`);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setProcessingPhase(null);
+    }
+  };
+  
+  const handleSendMail = async () => {
+    const o = orderData?.order;
+    if (!o?.phase4FileUrl) return;
+    
+    setSendingMail(true);
+    setMailSuccess(false);
+    setError('');
+    
+    try {
+      // 1. Get metadata for subject (Fetch Master List)
+      const currentOrderCode = o.phase1Note || (o.phase1FileName ? o.phase1FileName.split(',')[0].trim() : '');
+      let targetItem: any = null;
+      try {
+        const mList = await getMonthlyMasterList();
+        if (mList?.months) {
+          for (const m of mList.months) {
+            const found = m.items?.find((it: any) => it.orderCode.toLowerCase() === currentOrderCode.toLowerCase());
+            if (found) { targetItem = found; break; }
+          }
+        }
+      } catch { /* ignore */ }
+
+      // 2. Fetch report to get SSCC range
+      const res = await fetch(o.phase4FileUrl);
+      const text = await res.text();
+      const lines = text.split(/\r?\n/).filter(l => l.trim() !== '' && l.includes('\t'));
+      
+      if (lines.length === 0) throw new Error('Rapor içeriği boş veya okunamaz durumda.');
+      
+      const firstSSCC = lines[0].split('\t')[1];
+      const lastSSCC = lines[lines.length - 1].split('\t')[1];
+      const ssccRange = `${firstSSCC} - ${lastSSCC}`;
+
+      const prodDate = targetItem?.productionDate || "06.05.2026";
+      const sktDate = targetItem?.sktDate || "06.11.2026";
+
+      await sendB2BReportEmail(params.orderId, o.phase4FileUrl, o.phase4FileName || 'report.csv', {
+        vehicleCode: targetItem?.vehicleCode || o.orderName.split(' • ')[0],
+        orderCode: currentOrderCode,
+        ssccRange,
+        prodDate,
+        expDate: sktDate,
+        batchNo: targetItem?.batchNo || "Bilinmiyor"
+      });
+
+      setMailSuccess(true);
+    } catch (err: any) {
+      setError(`Mail gönderimi başarısız: ${err.message}`);
+    } finally {
+      setSendingMail(false);
     }
   };
 
@@ -958,22 +994,37 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
                 </div>
 
                 {o.phase4FileUrl ? (
-                  <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
-                    <a href={o.phase4FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-indigo-300 hover:underline max-w-[200px] truncate" title={o.phase4FileName}>
-                      📦 {o.phase4FileName}
-                    </a>
+                  <div className="flex flex-col gap-3 self-stretch sm:self-auto min-w-[240px]">
+                    <div className="flex items-center gap-2 justify-end shrink-0">
+                      <a href={o.phase4FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-indigo-300 hover:underline max-w-[200px] truncate" title={o.phase4FileName}>
+                        📦 {o.phase4FileName}
+                      </a>
+                      <button
+                        onClick={() => handleOpenPreview(o.phase4FileUrl, o.phase4FileName)}
+                        className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
+                      >
+                        <Eye size={14} /> Önizle
+                      </button>
+                      <button
+                        onClick={() => handleClearPhase(4)}
+                        title="Raporu Sıfırla"
+                        className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
                     <button
-                      onClick={() => handleOpenPreview(o.phase4FileUrl, o.phase4FileName)}
-                      className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
+                      onClick={handleSendMail}
+                      disabled={sendingMail}
+                      className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border shadow-lg ${
+                        mailSuccess 
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
+                          : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/20'
+                      }`}
                     >
-                      <Eye size={14} /> Önizle
-                    </button>
-                    <button
-                      onClick={() => handleClearPhase(4)}
-                      title="Raporu Sıfırla"
-                      className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
-                    >
-                      <X size={14} />
+                      {sendingMail ? <Loader2 size={14} className="animate-spin" /> : mailSuccess ? <CheckCircle2 size={14} /> : <Upload size={14} />}
+                      <span>{mailSuccess ? 'Rapor Başarıyla Mail Gönderildi' : 'Raporu Mail Olarak Gönder'}</span>
                     </button>
                   </div>
                 ) : (
