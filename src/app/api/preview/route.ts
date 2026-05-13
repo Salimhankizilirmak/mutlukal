@@ -43,7 +43,8 @@ export async function GET(req: NextRequest) {
         },
       });
     }
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Sunucu dosya okuma hatası' }, { status: 500 });
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Sunucu dosya okuma hatası';
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
