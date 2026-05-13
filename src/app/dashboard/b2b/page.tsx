@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Briefcase, Plus, FolderKanban, CheckCircle2, Clock, AlertCircle, ArrowRight, Layers, Building2, Tag, Loader2, Upload } from 'lucide-react';
+import { Briefcase, Plus, FolderKanban, CheckCircle2, Clock, AlertCircle, ArrowRight, Layers, Building2, Tag, Loader2, Upload, Search, Filter, Calendar } from 'lucide-react';
 import Link from 'next/link';
 import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder, importLocalHistoricalBatch, createImportedOrderBatchClient, deleteOrder, deleteAllOrders } from './actions';
 
@@ -26,6 +26,11 @@ export default function B2BDashboardPage() {
   const [importingBatch, setImportingBatch] = useState(false);
   const [batchSuccess, setBatchSuccess] = useState('');
   const [clientScanProgress, setClientScanProgress] = useState('');
+
+  // Search & Filter States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
+  const [filterOrderPrefix, setFilterOrderPrefix] = useState('');
 
   const handleDeleteSingleOrder = async (e: React.MouseEvent, id: string) => {
     e.preventDefault();
@@ -642,8 +647,134 @@ export default function B2BDashboardPage() {
           </div>
         </div>
 
+        {/* Filter & Search Toolbar */}
+        {orders.length > 0 && (
+          (() => {
+            // Derived unique filtering options
+            const availableMonths = Array.from(new Set(orders.map(o => {
+              try {
+                const d = new Date(o.order.createdAt);
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+              } catch {
+                return '';
+              }
+            }).filter(Boolean))).sort().reverse();
+
+            // Extract unique order prefix/codes from orderName
+            const availablePrefixes = Array.from(new Set(orders.flatMap(o => {
+              const name = o.order.orderName || '';
+              const m = name.match(/(?:KB|ZP\w|Z\d{9}|[A-Z]{2,3}-\d+)/g);
+              if (m && m.length > 0) return m;
+              const parts = name.split(/\s*-\s*|\s+/);
+              return parts.filter((p: string) => p.length > 2 && p.length < 15);
+            }).filter(Boolean))).sort();
+
+            return (
+              <div className="bg-zinc-950/60 border border-zinc-800/80 rounded-2xl p-3 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+                {/* Text search bar */}
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={14} />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Sipariş adı, dosya, etiket veya notlarda arayın..."
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-zinc-200 outline-none focus:border-indigo-500/50 placeholder:text-zinc-600"
+                  />
+                  {searchQuery && (
+                    <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 hover:text-zinc-300 font-bold">
+                      Temizle
+                    </button>
+                  )}
+                </div>
+
+                {/* Dropdown Filters */}
+                <div className="flex items-center gap-2 shrink-0 overflow-x-auto pb-1 md:pb-0">
+                  {/* Month Filter */}
+                  <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-xl px-2.5 py-1.5">
+                    <Calendar className="text-zinc-500 shrink-0" size={12} />
+                    <span className="text-[10px] text-zinc-500 font-bold block shrink-0">Ay:</span>
+                    <select
+                      value={filterMonth}
+                      onChange={e => setFilterMonth(e.target.value)}
+                      className="bg-transparent text-xs text-zinc-300 outline-none cursor-pointer pr-1"
+                    >
+                      <option value="">Tüm Aylar</option>
+                      {availableMonths.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Order Code/Prefix Filter */}
+                  <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-xl px-2.5 py-1.5">
+                    <Filter className="text-zinc-500 shrink-0" size={12} />
+                    <span className="text-[10px] text-zinc-500 font-bold block shrink-0">Emir/Kod:</span>
+                    <select
+                      value={filterOrderPrefix}
+                      onChange={e => setFilterOrderPrefix(e.target.value)}
+                      className="bg-transparent text-xs text-zinc-300 outline-none cursor-pointer max-w-[120px] truncate"
+                    >
+                      <option value="">Tüm Emirler</option>
+                      {availablePrefixes.map(p => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Reset Filters trigger */}
+                  {(filterMonth || filterOrderPrefix) && (
+                    <button
+                      onClick={() => { setFilterMonth(''); setFilterOrderPrefix(''); }}
+                      className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold px-2 py-1 shrink-0"
+                    >
+                      Sıfırla
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {orders.map(({ order, partnerName, brandName }) => (
+          {(() => {
+            const filteredOrders = orders.filter(item => {
+              const { order, partnerName, brandName } = item;
+              
+              if (filterMonth) {
+                try {
+                  const d = new Date(order.createdAt);
+                  const mStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                  if (mStr !== filterMonth) return false;
+                } catch {
+                  return false;
+                }
+              }
+
+              if (filterOrderPrefix) {
+                const allText = `${order.orderName || ''} ${order.phase1AllFiles || ''} ${order.phase2AllFiles || ''} ${order.phase3AllFiles || ''} ${order.phase4AllFiles || ''}`.toLowerCase();
+                if (!allText.includes(filterOrderPrefix.toLowerCase())) return false;
+              }
+
+              if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase().trim();
+                const matchText = `${order.orderName || ''} ${partnerName || ''} ${brandName || ''} ${order.phase1AllFiles || ''} ${order.phase2AllFiles || ''} ${order.phase3AllFiles || ''} ${order.phase4AllFiles || ''} ${order.phase1Note || ''} ${order.phase2Note || ''} ${order.phase3Note || ''} ${order.phase4Note || ''}`.toLowerCase();
+                if (!matchText.includes(q)) return false;
+              }
+
+              return true;
+            });
+
+            if (filteredOrders.length === 0 && orders.length > 0) {
+              return (
+                <div className="col-span-full py-8 text-center text-zinc-500 text-xs italic">
+                  Arama ve filtreleme kriterlerinize uygun sipariş iş akışı bulunamadı.
+                </div>
+              );
+            }
+
+            return filteredOrders.map(({ order, partnerName, brandName }) => (
             <Link
               key={order.id}
               href={`/dashboard/b2b/${order.id}`}
@@ -789,7 +920,8 @@ export default function B2BDashboardPage() {
                 </div>
               </div>
             </Link>
-          ))}
+          ));
+        })()}
 
           {orders.length === 0 && (
             <div className="col-span-full py-12 text-center text-zinc-600 border border-dashed border-zinc-800 rounded-2xl text-xs">
