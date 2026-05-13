@@ -73,19 +73,23 @@ export const b2bOrders = sqliteTable('b2b_orders', {
   // Phase 1: Firmadan Gelen CSV
   phase1FileUrl: text('phase1_file_url'),
   phase1FileName: text('phase1_file_name'),
-  
+  phase1AllFiles: text('phase1_all_files'), // JSON array of all CSV filenames in group
+
   // Phase 2: Makineye Gönderilen Excel
   phase2FileUrl: text('phase2_file_url'),
   phase2FileName: text('phase2_file_name'),
-  
+  phase2AllFiles: text('phase2_all_files'), // JSON array: [{name, size, isPart}]
+
   // Phase 3: Cihazdan Alınan Excel
   phase3FileUrl: text('phase3_file_url'),
   phase3FileName: text('phase3_file_name'),
-  
+  phase3AllFiles: text('phase3_all_files'), // JSON array: [{name, size}]
+
   // Phase 4: Firmaya Gönderilen Rapor CSV (Reconciled SSCC)
   phase4FileUrl: text('phase4_file_url'),
   phase4FileName: text('phase4_file_name'),
-  
+  phase4AllFiles: text('phase4_all_files'), // JSON array: [{name, size}]
+
   status: text('status').default('phase1_pending'), // tracks progress
   createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   updatedAt: integer('updatedAt', { mode: 'timestamp' }),

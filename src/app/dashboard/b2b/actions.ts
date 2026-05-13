@@ -224,15 +224,31 @@ export async function createImportedOrderBatchClient(data: {
   partnerId: string;
   brandId?: string;
   orderName: string;
+  // Phase 1 — gelen CSV grubu
   phase1FileUrl: string;
   phase1FileName: string;
+  phase1AllFiles?: string; // JSON: string[]
+  // Phase 2 — makineye gönderilen xlsx (eşleşti ise)
+  phase2FileUrl?: string | null;
+  phase2FileName?: string | null;
+  phase2AllFiles?: string | null; // JSON: {name:string, size:number, isPart:boolean}[]
+  // Phase 3 — cihazdan alınan xlsx (eşleşti ise)
   phase3FileUrl?: string | null;
   phase3FileName?: string | null;
+  phase3AllFiles?: string | null;
+  // Phase 4 — firmaya gönderilen rapor (eşleşti ise)
+  phase4FileUrl?: string | null;
+  phase4FileName?: string | null;
+  phase4AllFiles?: string | null;
 }) {
   const context = await getFactoryContext();
   if (!context.factoryId) throw new Error('Yetkisiz');
 
-  const statusVal = data.phase3FileUrl ? 'phase4_pending' : 'phase2_pending';
+  // Status: en ileri tamamlanan aşamaya göre otomatik hesapla
+  let statusVal = 'phase2_pending';
+  if (data.phase4FileUrl) statusVal = 'completed';
+  else if (data.phase3FileUrl) statusVal = 'phase4_pending';
+  else if (data.phase2FileUrl) statusVal = 'phase3_pending';
 
   const [order] = await db.insert(b2bOrders).values({
     partnerId: data.partnerId,
@@ -240,8 +256,16 @@ export async function createImportedOrderBatchClient(data: {
     orderName: data.orderName,
     phase1FileUrl: data.phase1FileUrl,
     phase1FileName: data.phase1FileName,
+    phase1AllFiles: data.phase1AllFiles || null,
+    phase2FileUrl: data.phase2FileUrl || null,
+    phase2FileName: data.phase2FileName || null,
+    phase2AllFiles: data.phase2AllFiles || null,
     phase3FileUrl: data.phase3FileUrl || null,
     phase3FileName: data.phase3FileName || null,
+    phase3AllFiles: data.phase3AllFiles || null,
+    phase4FileUrl: data.phase4FileUrl || null,
+    phase4FileName: data.phase4FileName || null,
+    phase4AllFiles: data.phase4AllFiles || null,
     status: statusVal as any,
     orgId: context.factoryId,
   }).returning();

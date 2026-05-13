@@ -100,94 +100,174 @@ export default function B2BDashboardPage() {
     setImportingBatch(true);
     setError('');
     setBatchSuccess('');
-    setClientScanProgress('Seçilen klasör derinlemesine taranıyor ve tüm dosyalar analiz ediliyor...');
+    setClientScanProgress('Klasör hiyerarşisi derinlemesine taranıyor, makine grupları tespit ediliyor...');
 
     try {
-      // 1. Tüm geçerli dosyaları topla ve yol bilgilerini ayrıştır
-      const allFiles: { file: File; relPath: string; phase: number; orderCode: string; groupDir: string }[] = [];
+      // ──────────────────────────────────────────────────────────────
+      // ADIM 1: Tüm geçerli dosyaları tara ve normalize et
+      // ──────────────────────────────────────────────────────────────
+      type FileEntry = {
+        file: File;
+        phase: number;
+        orderCode: string;  // Dosya adının başındaki kod (ZPK-010320, Z190007471...)
+        groupDir: string;   // Dosyanın hemen üstündeki klasör adı
+        size: number;
+      };
+      const allEntries: FileEntry[] = [];
 
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         const rel = f.webkitRelativePath || '';
         const lowerRel = rel.toLowerCase();
 
-        // Arşivleri (.zip, .rar) atla
         if (lowerRel.endsWith('.zip') || lowerRel.endsWith('.rar')) continue;
         if (!lowerRel.endsWith('.csv') && !lowerRel.endsWith('.xlsx') && !lowerRel.endsWith('.xls')) continue;
 
         const parts = rel.split('/');
         if (parts.length < 3) continue;
 
-        // Yolun içinde 1-, 2-, 3-, 4- klasör adını tespit et
         let phase = 0;
-        if (parts.some(p => p.startsWith('1-'))) phase = 1;
-        else if (parts.some(p => p.startsWith('2-'))) phase = 2;
-        else if (parts.some(p => p.startsWith('3-'))) phase = 3;
-        else if (parts.some(p => p.startsWith('4-'))) phase = 4;
-
+        for (const p of parts) {
+          if (p.startsWith('1-')) { phase = 1; break; }
+          if (p.startsWith('2-')) { phase = 2; break; }
+          if (p.startsWith('3-')) { phase = 3; break; }
+          if (p.startsWith('4-')) { phase = 4; break; }
+        }
         if (phase === 0) continue;
 
-        // Sipariş Kodu: Dosya adının başındaki ilk kelime/kod parçası (Örn: "ZPK-010320", "ZP9-013772", "Z190007471")
-        const fileName = f.name;
-        const match = fileName.match(/^([A-Za-z0-9]+-[0-9]+|[A-Za-z0-9]+)/);
-        const orderCode = match ? match[0] : fileName.split(',')[0].split(' ')[0];
-
-        // Grup Klasörü: Dosyanın hemen üstündeki klasör adı
         const subDirName = parts[parts.length - 2];
-        // Sadece sayı ve tireden oluşan (Örn: "18-", "19-") boş klasör kalıntılarını atla
-        if (/^\d+-$/.test(subDirName.trim())) continue;
+        if (/^\d+-$/.test(subDirName.trim())) continue; // boş yer tutucu klasörler
 
-        allFiles.push({
-          file: f,
-          relPath: rel,
-          phase,
-          orderCode,
-          groupDir: subDirName
-        });
+        // Sipariş kodu: dosya adının başındaki alfanümerik-tire kombinasyonu
+        const codeMatch = f.name.match(/^([A-Za-z0-9]+-[0-9]+)/);
+        const orderCode = codeMatch ? codeMatch[1] : f.name.split(',')[0].trim();
+
+        allEntries.push({ file: f, phase, orderCode, groupDir: subDirName, size: f.size });
       }
 
-      // 2. Sadece Phase 1 dosyalarını (Gelen ham CSV'ler) baz alarak her birini bağımsız bir iş akışı olarak tanımla
-      const phase1Files = allFiles.filter(f => f.phase === 1);
-
-      if (phase1Files.length === 0) {
-        throw new Error('Seçilen klasör yapısında 1- ile başlayan alt klasörler içinde geçerli gelen CSV dosyası bulunamadı.');
+      // ──────────────────────────────────────────────────────────────
+      // ADIM 2: Phase 1 dosyalarını GRUP KLASÖRÜ bazında topla
+      // Her grup klasörü = tek bir makine yükü = tek bir kart
+      // ──────────────────────────────────────────────────────────────
+      const p1Entries = allEntries.filter(e => e.phase === 1);
+      if (p1Entries.length === 0) {
+        throw new Error('Seçilen klasörde 1- ile başlayan alt klasörler içinde geçerli CSV dosyası bulunamadı.');
       }
 
+      // Grup klasörü adına göre düzenle
+      const groupMap = new Map<string, FileEntry[]>();
+      for (const entry of p1Entries) {
+        if (!groupMap.has(entry.groupDir)) groupMap.set(entry.groupDir, []);
+        groupMap.get(entry.groupDir)!.push(entry);
+      }
+
+      // ──────────────────────────────────────────────────────────────
+      // Yardımcı: verilen orderCode listesini barındıran Phase N dosyalarını bul
+      // "parça" tespiti: dosya adında "parça" veya "parça" kelimesi varsa partial
+      // ──────────────────────────────────────────────────────────────
+      const isPart = (name: string) => /parça|parca|part/i.test(name);
+
+      const findPhaseFiles = (phaseNum: number, orderCodes: string[]) => {
+        const matched = allEntries.filter(e =>
+          e.phase === phaseNum && orderCodes.some(oc => e.orderCode === oc)
+        );
+        if (matched.length === 0) return null;
+        // Tam (parça olmayan) dosyayı ana dosya yap; yoksa en büyük boyutluyu al
+        const mainFile = matched.find(f => !isPart(f.file.name)) ||
+          matched.reduce((a, b) => a.size > b.size ? a : b);
+        const partFiles = matched.filter(f => f !== mainFile);
+        return { mainFile, partFiles, all: matched };
+      };
+
+      // ──────────────────────────────────────────────────────────────
+      // ADIM 3: Her grup için çapraz aşama eşleştirmesi ve DB kaydı
+      // ──────────────────────────────────────────────────────────────
+      const groupKeys = Array.from(groupMap.keys());
       let successCount = 0;
-      for (let idx = 0; idx < phase1Files.length; idx++) {
-        const p1Item = phase1Files[idx];
-        
-        setClientScanProgress(`Siparişler aktarılıyor (${idx + 1}/${phase1Files.length}): ${p1Item.orderCode}...`);
 
-        // Eşleşen Phase 3 dosyasını sipariş koduna göre otomatik bul (Örn: ZPK-010320 ile başlayan Phase 3 dosyası)
-        const p3Item = allFiles.find(f => f.phase === 3 && f.orderCode === p1Item.orderCode);
+      for (let gi = 0; gi < groupKeys.length; gi++) {
+        const groupDir = groupKeys[gi];
+        const groupFiles = groupMap.get(groupDir)!;
 
-        const p1Url = await uploadFileDirectly(p1Item.file, p1Item.file.name);
-        let p3Url: string | null = null;
-        if (p3Item) {
-          p3Url = await uploadFileDirectly(p3Item.file, p3Item.file.name);
+        // Gruptaki tüm sipariş kodları
+        const orderCodes = groupFiles.map(f => f.orderCode);
+
+        setClientScanProgress(`Grup aktarılıyor (${gi + 1}/${groupKeys.length}): ${groupDir}...`);
+
+        // Phase 1: tüm CSV'ler bu gruptaki dosyalar
+        const p1Main = groupFiles[0]; // ana = ilk (boyuta göre de sıralanabilir ama fark az)
+        const p1Url = await uploadFileDirectly(p1Main.file, p1Main.file.name);
+        const p1AllNames = groupFiles.map(f => f.file.name);
+
+        // Phase 2 çapraz eşleştirme
+        const p2Result = findPhaseFiles(2, orderCodes);
+        let p2Url: string | null = null;
+        let p2FileName: string | null = null;
+        let p2AllFiles: string | null = null;
+        if (p2Result) {
+          p2Url = await uploadFileDirectly(p2Result.mainFile.file, p2Result.mainFile.file.name);
+          p2FileName = p2Result.mainFile.file.name;
+          // Tüm parça+tam dosya bilgisini JSON olarak kaydet
+          p2AllFiles = JSON.stringify(p2Result.all.map(f => ({
+            name: f.file.name,
+            size: f.size,
+            isPart: isPart(f.file.name),
+          })));
         }
 
-        // Sipariş Başlığı: "[Grup Klasörü] • [Dosya Adı]"
-        const cleanFileName = p1Item.file.name.replace(/\.[^/.]+$/, '');
-        const title = `${p1Item.groupDir} • ${cleanFileName}`;
+        // Phase 3 çapraz eşleştirme
+        const p3Result = findPhaseFiles(3, orderCodes);
+        let p3Url: string | null = null;
+        let p3FileName: string | null = null;
+        let p3AllFiles: string | null = null;
+        if (p3Result) {
+          p3Url = await uploadFileDirectly(p3Result.mainFile.file, p3Result.mainFile.file.name);
+          p3FileName = p3Result.mainFile.file.name;
+          p3AllFiles = JSON.stringify(p3Result.all.map(f => ({
+            name: f.file.name,
+            size: f.size,
+            isPart: isPart(f.file.name),
+          })));
+        }
+
+        // Phase 4 çapraz eşleştirme
+        const p4Result = findPhaseFiles(4, orderCodes);
+        let p4Url: string | null = null;
+        let p4FileName: string | null = null;
+        let p4AllFiles: string | null = null;
+        if (p4Result) {
+          p4Url = await uploadFileDirectly(p4Result.mainFile.file, p4Result.mainFile.file.name);
+          p4FileName = p4Result.mainFile.file.name;
+          p4AllFiles = JSON.stringify(p4Result.all.map(f => ({
+            name: f.file.name,
+            size: f.size,
+            isPart: isPart(f.file.name),
+          })));
+        }
 
         await createImportedOrderBatchClient({
           partnerId: selectedPartnerId,
           brandId: selectedBrandId || undefined,
-          orderName: title.length > 255 ? title.substring(0, 250) : title,
+          orderName: groupDir.length > 255 ? groupDir.substring(0, 250) : groupDir,
           phase1FileUrl: p1Url,
-          phase1FileName: p1Item.file.name,
+          phase1FileName: p1Main.file.name,
+          phase1AllFiles: JSON.stringify(p1AllNames),
+          phase2FileUrl: p2Url,
+          phase2FileName: p2FileName,
+          phase2AllFiles: p2AllFiles,
           phase3FileUrl: p3Url,
-          phase3FileName: p3Item ? p3Item.file.name : null,
+          phase3FileName: p3FileName,
+          phase3AllFiles: p3AllFiles,
+          phase4FileUrl: p4Url,
+          phase4FileName: p4FileName,
+          phase4AllFiles: p4AllFiles,
         });
 
         successCount++;
       }
 
       await loadData();
-      setBatchSuccess(`✔ Muhteşem! Tarayıcı üzerinden toplam ${successCount} adet bağımsız sipariş dosyası derinlemesine ayrıştırıldı, çapraz eşleştirildi ve iş akışına eklendi.`);
-      // Reset input
+      setBatchSuccess(`✔ Muhteşem! ${successCount} adet makine grubu, 4 aşamanın tamamı çapraz eşleştirilerek ve tüm dosya detaylarıyla sisteme aktarıldı.`);
       e.target.value = '';
     } catch (err: any) {
       setError(err.message || 'Klasör yüklenirken hata oluştu.');
@@ -196,6 +276,7 @@ export default function B2BDashboardPage() {
       setClientScanProgress('');
     }
   };
+
 
   const loadBrands = useCallback(async (pId: string) => {
     try {
@@ -568,9 +649,10 @@ export default function B2BDashboardPage() {
               href={`/dashboard/b2b/${order.id}`}
               className="group bg-zinc-950/80 border border-zinc-800/80 hover:border-indigo-500/40 rounded-2xl p-4 transition-all duration-300 block space-y-3 shadow-md relative"
             >
+              {/* Header: partner + badge + status */}
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-bold text-indigo-400">{partnerName}</span>
                     {brandName && (
                       <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-medium">
@@ -578,25 +660,120 @@ export default function B2BDashboardPage() {
                       </span>
                     )}
                   </div>
-                  <h3 className="text-sm font-bold text-zinc-200 mt-1 group-hover:text-white transition-colors">
+                  <h3 className="text-sm font-bold text-zinc-200 mt-1 group-hover:text-white transition-colors break-words">
                     {order.orderName}
                   </h3>
                 </div>
-
                 <div className="shrink-0 mt-0.5">
                   {getStatusBadge(order.status)}
                 </div>
               </div>
 
-              {/* Progress dots bar */}
-              <div className="grid grid-cols-4 gap-1 pt-2">
+              {/* Phase file details */}
+              <div className="space-y-1.5 text-[11px]">
+                {/* Phase 1 */}
+                <div className="flex gap-2">
+                  <span className="shrink-0 w-5 h-5 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-[9px]">1</span>
+                  <div className="min-w-0">
+                    {order.phase1AllFiles ? (
+                      (() => {
+                        const names: string[] = JSON.parse(order.phase1AllFiles);
+                        return (
+                          <div className="text-zinc-400 space-y-0.5">
+                            {names.map((n: string) => (
+                              <div key={n} className="truncate font-mono text-[10px]">📄 {n}</div>
+                            ))}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <span className="text-zinc-500 italic">Gelen CSV yok</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Phase 2 */}
+                <div className="flex gap-2">
+                  <span className={`shrink-0 w-5 h-5 rounded flex items-center justify-center font-bold text-[9px] ${order.phase2FileUrl ? 'bg-purple-500/20 text-purple-400' : 'bg-zinc-800 text-zinc-600'}`}>2</span>
+                  <div className="min-w-0">
+                    {order.phase2AllFiles ? (
+                      (() => {
+                        const files: {name: string; size: number; isPart: boolean}[] = JSON.parse(order.phase2AllFiles);
+                        const main = files.find(f => !f.isPart) || files[0];
+                        const parts = files.filter(f => f !== main);
+                        return (
+                          <div className="text-zinc-400 space-y-0.5">
+                            <div className="truncate font-mono text-[10px] text-purple-300">✅ {main.name}</div>
+                            {parts.length > 0 && (
+                              <div className="text-zinc-500 text-[10px]">+ {parts.length} parça: {parts.map(p => p.name.split(',')[0]).join(', ')}</div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <span className="text-zinc-600 italic">Makine xlsx bekleniyor</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Phase 3 */}
+                <div className="flex gap-2">
+                  <span className={`shrink-0 w-5 h-5 rounded flex items-center justify-center font-bold text-[9px] ${order.phase3FileUrl ? 'bg-blue-500/20 text-blue-400' : 'bg-zinc-800 text-zinc-600'}`}>3</span>
+                  <div className="min-w-0">
+                    {order.phase3AllFiles ? (
+                      (() => {
+                        const files: {name: string; size: number; isPart: boolean}[] = JSON.parse(order.phase3AllFiles);
+                        const main = files.find(f => !f.isPart) || files[0];
+                        const parts = files.filter(f => f !== main);
+                        return (
+                          <div className="text-zinc-400 space-y-0.5">
+                            <div className="truncate font-mono text-[10px] text-blue-300">✅ {main.name}</div>
+                            {parts.length > 0 && (
+                              <div className="text-zinc-500 text-[10px]">+ {parts.length} parça: {parts.map(p => p.name.split(',')[0]).join(', ')}</div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <span className="text-zinc-600 italic">Cihaz çıktısı bekleniyor</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Phase 4 */}
+                <div className="flex gap-2">
+                  <span className={`shrink-0 w-5 h-5 rounded flex items-center justify-center font-bold text-[9px] ${order.phase4FileUrl ? 'bg-amber-500/20 text-amber-400' : 'bg-zinc-800 text-zinc-600'}`}>4</span>
+                  <div className="min-w-0">
+                    {order.phase4AllFiles ? (
+                      (() => {
+                        const files: {name: string; size: number; isPart: boolean}[] = JSON.parse(order.phase4AllFiles);
+                        const main = files.find(f => !f.isPart) || files[0];
+                        const parts = files.filter(f => f !== main);
+                        return (
+                          <div className="text-zinc-400 space-y-0.5">
+                            <div className="truncate font-mono text-[10px] text-amber-300">✅ {main.name}</div>
+                            {parts.length > 0 && (
+                              <div className="text-zinc-500 text-[10px]">+ {parts.length} dosya daha</div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <span className="text-zinc-600 italic">Nihai rapor bekleniyor</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="grid grid-cols-4 gap-1">
                 <div className={`h-1 rounded-full ${order.phase1FileUrl ? 'bg-emerald-500' : 'bg-zinc-800'}`}></div>
                 <div className={`h-1 rounded-full ${order.phase2FileUrl ? 'bg-purple-500' : 'bg-zinc-800'}`}></div>
                 <div className={`h-1 rounded-full ${order.phase3FileUrl ? 'bg-blue-500' : 'bg-zinc-800'}`}></div>
-                <div className={`h-1 rounded-full ${order.phase4FileUrl ? 'bg-indigo-500' : 'bg-zinc-800'}`}></div>
+                <div className={`h-1 rounded-full ${order.phase4FileUrl ? 'bg-amber-500' : 'bg-zinc-800'}`}></div>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1">
+              <div className="flex items-center justify-between text-[11px] text-zinc-500">
                 <span>Son Güncelleme: {new Date(order.updatedAt || order.createdAt).toLocaleDateString('tr-TR')}</span>
                 <div className="flex items-center gap-3">
                   <button
