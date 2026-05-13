@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, CheckCircle2, Upload, Download, RefreshCw, FileText, AlertCircle, Loader2, Sparkles, Eye, X, ChevronDown } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Upload, RefreshCw, FileText, AlertCircle, Loader2, Sparkles, Eye, X, ChevronDown, Hash } from 'lucide-react';
 import Link from 'next/link';
 import * as XLSX from 'xlsx';
 import { getOrderById, updateOrderPhase, clearPhaseFile } from '../actions';
@@ -56,6 +56,7 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
 
   // Global SSCC counter state tracker
   const [activeSSCC, setActiveSSCC] = useState<string>('');
+  const [reconcileTargetCount, setReconcileTargetCount] = useState<number>(0);
 
   // Premium File Previewer Modal State
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
@@ -138,50 +139,47 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     }
   };
 
-  // Phase 2 Generator (Machine Prep)
+  // Phase 2 Generator (Machine Prep) - Pure GS1 Character Preserving Single Column XLSX Converter
   const handlePhase2Generate = async () => {
     if (!orderData?.order?.phase1FileUrl) return setError('Aşama 1 dosyası bulunamadı.');
     setProcessingPhase(2);
     setError('');
     setSuccess('');
     try {
-      // Fetch phase 1 raw contents
+      // Fetch phase 1 raw contents as string text to avoid breaking control chars via sheet_to_json
       const res = await fetch(orderData.order.phase1FileUrl);
-      const buffer = await res.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as string[][];
+      const text = await res.text();
+      const cleanText = text.startsWith('\ufeff') ? text.slice(1) : text;
+      
+      const rows = cleanText.split(/\r?\n/).filter(line => line.trim() !== '');
+      const data = rows.map(row => row.split('\t'));
 
-      const rowsForMachine: any[] = [];
-      for (let i = 0; i < rawRows.length; i++) {
-        const row = rawRows[i];
-        if (!row || !row[0]) continue;
-        const rawStr = String(row[0]).trim();
-        
-        // signature collision check protection
-        if ((rawStr.toLowerCase().includes('kod') || rawStr.toLowerCase().includes('tarih')) && !rawStr.startsWith('01') && !rawStr.startsWith('(01)')) continue;
-        
-        const cleaned = cleanAndFormat(rawStr);
-        if (cleaned) {
-          rowsForMachine.push({ 'Barkod': cleaned });
-        }
-      }
-
-      if (rowsForMachine.length === 0) throw new Error('Aşama 1 dosyasından geçerli kod çıkarılamadı.');
-
-      // Package native Excel for machine
-      const targetWs = XLSX.utils.json_to_sheet(rowsForMachine);
+      const targetWs = XLSX.utils.aoa_to_sheet(data);
       const targetWb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(targetWb, targetWs, 'Makine_Sablonu');
+      XLSX.utils.book_append_sheet(targetWb, targetWs, 'Sheet1');
+
       const outBuffer = XLSX.write(targetWb, { type: 'array', bookType: 'xlsx' });
 
-      const generatedName = `${orderData.partnerName}_${orderData.brandName || 'Genel'}_Makine_Sablonu.xlsx`;
+      const baseName = orderData.order.phase1FileName ? orderData.order.phase1FileName.replace(/\.csv|\.txt/i, '') : `${orderData.partnerName}_${orderData.brandName || 'Genel'}`;
+      const generatedName = `${baseName}.xlsx`;
       const fileObj = new File([outBuffer], generatedName, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
       const url = await uploadToCloud(fileObj, generatedName);
       await updateOrderPhase(params.orderId, 2, url, generatedName);
+      
+      // Client direct native download trigger
+      const blob = new Blob([outBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = generatedName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+
       await fetchOrder();
-      setSuccess('✔ Aşama 2 (Makine Exceli) otomatik üretildi ve S3 bulutuna eklendi.');
+      setSuccess(`✔ Aşama 2 (Makine Hat Şablonu) GS1 karakterleri bozulmadan tek sütunlu XLSX olarak üretildi, buluta kaydedildi ve indirildi: ${generatedName}`);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -208,10 +206,13 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     }
   };
 
-  // Phase 4 Deliverables Logic (SSCC Carton chains generation + Final report formatting)
+  // Phase 4 Deliverables Logic (Eksik Tamamlama / Reconcile)
   const handlePhase4Finalize = async () => {
-    const sourceUrl = orderData?.order?.phase3FileUrl || orderData?.order?.phase1FileUrl;
-    if (!sourceUrl) return setError('Aşama 3 veya Aşama 1 kaynak verisi bulunamadı.');
+    const reportUrl = orderData?.order?.phase3FileUrl;
+    const refUrl = orderData?.order?.phase1FileUrl;
+    
+    if (!refUrl) return setError('Aşama 1 (Referans) verisi bulunamadı.');
+    if (!reconcileTargetCount || reconcileTargetCount <= 0) return setError('Lütfen geçerli bir Hedef Toplam Adet girin.');
     
     setProcessingPhase(4);
     setError('');
@@ -222,46 +223,78 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       const { state: startSSCC } = await ssccRes.json();
       if (!startSSCC || !startSSCC.startsWith('004')) throw new Error('Geçerli 004 sayacı okunamadı.');
 
-      // 2. Fetch source file contents
-      const fileRes = await fetch(sourceUrl);
-      const buffer = await fileRes.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as string[][];
+      // 2. Parse Phase 3 (Completed / Tamamlananlar) - Optional if only Phase 1 exists
+      const completedCodes = new Set<string>();
+      const finalProds: string[] = [];
 
-      const validProds: string[] = [];
-      const seen = new Set();
+      if (reportUrl) {
+        const reportRes = await fetch(reportUrl);
+        const reportBuffer = await reportRes.arrayBuffer();
+        const reportWb = XLSX.read(reportBuffer, { type: 'array' });
+        const reportWs = reportWb.Sheets[reportWb.SheetNames[0]];
+        const reportData = XLSX.utils.sheet_to_json(reportWs, { header: 1 }) as string[][];
 
-      for (let i = 0; i < rawRows.length; i++) {
-        const row = rawRows[i];
-        if (!row || !row[0]) continue;
-        const rawStr = String(row[0]).trim();
-        
-        // collision free robust filter
-        if ((rawStr.toLowerCase().includes('kod') || rawStr.toLowerCase().includes('tarih')) && !rawStr.startsWith('01') && !rawStr.startsWith('(01)')) continue;
-
-        const cleaned = cleanAndFormat(rawStr);
-        if (cleaned && !seen.has(cleaned)) {
-          seen.add(cleaned);
-          validProds.push(cleaned);
+        for (let i = 0; i < reportData.length; i++) {
+          const row = reportData[i];
+          if (!row || !row[0]) continue;
+          const rawStr = String(row[0]).trim();
+          if ((rawStr.toLowerCase().includes('kod') || rawStr.toLowerCase().includes('tarih')) && !rawStr.startsWith('01') && !rawStr.startsWith('(01)')) continue;
+          
+          const cleaned = cleanAndFormat(rawStr);
+          if (cleaned && !completedCodes.has(cleaned)) {
+            completedCodes.add(cleaned);
+            finalProds.push(cleaned);
+          }
         }
       }
 
-      if (validProds.length === 0) throw new Error('Dosyadan koli kodu atanacak ürün çıkarılamadı.');
+      // 3. Parse Phase 1 (Reference / Tüm Kodlar)
+      const refRes = await fetch(refUrl);
+      const refText = await refRes.text();
+      const cleanRefText = refText.startsWith('\ufeff') ? refText.slice(1) : refText;
+      const refLines = cleanRefText.split(/\r?\n/).filter(l => l.trim() !== '');
 
-      // 3. Chain sequential 004 carton logic every 30 records omitting pallet layer standard
+      const refProds: string[] = [];
+      for (const line of refLines) {
+        const firstCol = line.split('\t')[0].trim();
+        if (firstCol.startsWith('01') || firstCol.startsWith('(01)') || firstCol.length >= 13) {
+          refProds.push(firstCol);
+        } else if (refProds.length > 0) {
+          refProds[refProds.length - 1] += " " + firstCol;
+        }
+      }
+      const cleanedRefProds = refProds.map(cleanAndFormat).filter(Boolean);
+
+      // 4. Reconciliation Logic: Fill missing codes up to targetCount
+      const remainingCodes = cleanedRefProds.filter(code => !completedCodes.has(code));
+      const totalNeeded = reconcileTargetCount - finalProds.length;
+      
+      if (totalNeeded < 0) {
+        throw new Error(`Mevcut kod adedi (${finalProds.length}) hedef adetten (${reconcileTargetCount}) fazla.`);
+      }
+      
+      if (totalNeeded > 0) {
+        const selectedRemaining = remainingCodes.slice(0, totalNeeded);
+        finalProds.push(...selectedRemaining);
+      }
+
+      if (finalProds.length !== reconcileTargetCount) {
+        console.warn(`Hedef adede (${reconcileTargetCount}) ulaşılamadı. Eksik satır sayısı yetersiz. Elde edilen: ${finalProds.length}`);
+      }
+
+      // 5. Generate continuous carton SSCC codes
       let currentSSCC = startSSCC;
       const finalLines: string[] = [];
       
-      for (let i = 0; i < validProds.length; i++) {
+      for (let i = 0; i < finalProds.length; i++) {
         const isNewKoli = i % 30 === 0;
         if (i > 0 && isNewKoli) {
           currentSSCC = generateNextSSCC(currentSSCC);
         }
-        finalLines.push(`${validProds[i]}\t${currentSSCC}`);
+        finalLines.push(`${finalProds[i]}\t${currentSSCC}`);
       }
 
-      // 4. Update robust global continuous counter sequence via POST
+      // 6. Update global state
       const nextSSCC = generateNextSSCC(currentSSCC);
       await fetch('/api/sscc/state', {
         method: 'POST',
@@ -271,28 +304,26 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       });
       setActiveSSCC(nextSSCC);
 
-      // 5. Output file package cloud persisting + local browser downloading
+      // 7. Save to Cloud & Download
       const finalCsvContent = '\ufeff' + finalLines.join('\r\n');
-      const targetDeliverableName = `${orderData.partnerName}_${orderData.brandName || 'Genel'}_Rapor_Tamamlandi.csv`;
+      const targetDeliverableName = `${orderData.partnerName}_${orderData.brandName || 'Genel'}_Nihai_Rapor.csv`;
       
-      // Upload to Phase 4
       const fileObj = new File([finalCsvContent], targetDeliverableName, { type: 'text/csv;charset=utf-8' });
       const cloudUrl = await uploadToCloud(fileObj, targetDeliverableName);
       await updateOrderPhase(params.orderId, 4, cloudUrl, targetDeliverableName);
 
-      // Client direct native download trigger
       const blob = new Blob([finalCsvContent], { type: 'text/csv;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
+      const downloadUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = downloadUrl;
       a.download = targetDeliverableName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(downloadUrl);
 
       await fetchOrder();
-      setSuccess(`✔ İşlem Harika! Toplam ${validProds.length} ürüne ardışık 004 SSCC atandı, dosyalar buluta yedeklendi ve otomatik indirildi.`);
+      setSuccess(`✔ Rapor Başarıyla Hazırlandı! Toplam ${finalProds.length} ürüne koli kodları atandı, buluta yedeklendi ve indirildi.`);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -793,14 +824,42 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-4 w-full sm:w-auto">
+                    {/* Reconcile Controls */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Active Sequence Tracker Indicator */}
+                      <div className="flex items-center gap-2.5 p-2 bg-zinc-900 border border-zinc-800 rounded-xl">
+                        <div className="p-1.5 bg-amber-500/10 rounded-lg text-amber-500">
+                          <Hash size={14} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold leading-none">Sıradaki Koli</p>
+                          <p className="text-[11px] font-mono font-semibold text-amber-400 mt-0.5 truncate">
+                            {activeSSCC || '...'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Target Count Input */}
+                      <div className="flex items-center gap-2 px-3 bg-zinc-900 border border-zinc-800 rounded-xl focus-within:border-indigo-500/50 transition-colors">
+                        <Sparkles size={14} className="text-indigo-400" />
+                        <input
+                          type="number"
+                          value={reconcileTargetCount || ''}
+                          onChange={(e) => setReconcileTargetCount(parseInt(e.target.value) || 0)}
+                          placeholder="Hedef Adet"
+                          className="bg-transparent border-0 w-full py-2 text-xs text-white outline-none placeholder:text-zinc-600"
+                        />
+                      </div>
+                    </div>
+
                     <button
                       onClick={handlePhase4Finalize}
-                      disabled={processingPhase === 4 || (!o.phase3FileUrl && !o.phase1FileUrl)}
-                      className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-30 text-white font-bold px-5 py-2 rounded-xl text-xs transition-all flex items-center gap-2 shadow-md"
+                      disabled={processingPhase === 4 || !o.phase1FileUrl || !reconcileTargetCount}
+                      className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-30 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-md shadow-indigo-900/20"
                     >
-                      {processingPhase === 4 ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                      <span>Koli Kodlarını Ata & Üret</span>
+                      {processingPhase === 4 ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                      <span>Eksikleri Tamamla & Raporu Üret</span>
                     </button>
                   </div>
                 )}
