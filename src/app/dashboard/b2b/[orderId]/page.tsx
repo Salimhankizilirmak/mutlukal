@@ -10,31 +10,17 @@ import { generateNextSSCC } from '@/lib/gs1';
 
 const cleanAndFormat = (val: string) => {
   if (!val) return '';
-  // Temizleme: BOM, görünmez karakterler ve ayırıcıları uçlardan temizle
-  let v = String(val).replace(/^[\u200B-\u200D\uFEFF\s,;]+|[\u200B-\u200D\uFEFF\s,;]+$/g, '');
-  
+  let v = String(val).replace(/^[\u200B-\u200D\uFEFF\s]+|[\u200B-\u200D\uFEFF\s]+$/g, '');
   if (/^[\d.]+e[+\-]\d+$/i.test(v)) {
     try { v = BigInt(Math.round(Number(v))).toString(); } catch {}
   }
-  
-  // GS1 AI öneklerini temizle
   if (v.startsWith('(01)')) v = v.substring(4);
   if (v.startsWith('(00)')) v = v.substring(4);
   
-  // 13 haneli GTIN'leri 14'e tamamla
   if (/^\d{13}$/.test(v)) v = '0' + v;
-  
-  // Gelişmiş 91/92 yakalama (Boşluk, virgül veya noktalı virgül ile ayrılmış olsa bile)
-  v = v.replace(/[\s,;]+91(.{4})[\s,;]+92/g, '\u001D91$1\u001D92');
-  v = v.replace(/[\s,;]+91(.{4})92/g, '\u001D91$1\u001D92');
-  
-  // Çift GS karakterlerini ve iç boşlukları temizle
+  v = v.replace(/\s*91(.{4})\s*92/g, '\u001D91$1\u001D92');
   v = v.replace(/\u001D\u001D/g, '\u001D');
   v = v.replace(/\s/g, '');
-  
-  // Eğer hala virgül kaldıysa (çok sütunlu yapıdan dolayı), bunları birleştir
-  v = v.replace(/,/g, '');
-  
   return v;
 };
 
@@ -348,19 +334,19 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       const refRes = await fetch(refUrl);
       const refText = await refRes.text();
       const cleanRefText = refText.startsWith('\ufeff') ? refText.slice(1) : refText;
-      const sep = detectSeparator(cleanRefText);
-      const refLines = cleanRefText.split(/\r\n|\r|\n/).filter(l => l.trim() !== '');
+      const refLines = cleanRefText.split(/\r?\n/).filter(l => l.trim() !== '');
 
-      const refProds: string[] = [];
+      const refProdsRaw: string[] = [];
       for (const line of refLines) {
-        const cols = line.split(sep);
-        const rawLine = cols.length > 1 ? cols.join(' ') : cols[0];
-        const cleaned = cleanAndFormat(rawLine);
-        if (cleaned) {
-          refProds.push(cleaned);
+        // reconcile sayfasındaki gibi hem Tab hem Boşluk ayrıştırma
+        const firstCol = line.split('\t')[0].trim();
+        if (firstCol.startsWith('01') || firstCol.startsWith('(01)') || firstCol.length >= 13) {
+          refProdsRaw.push(firstCol);
+        } else if (refProdsRaw.length > 0) {
+          refProdsRaw[refProdsRaw.length - 1] += " " + firstCol;
         }
       }
-      const cleanedRefProds = refProds;
+      const cleanedRefProds = refProdsRaw.map(cleanAndFormat).filter(Boolean);
 
       // 4. Reconciliation Logic: Fill missing codes up to targetCount
       const remainingCodes = cleanedRefProds.filter(code => !completedCodes.has(code));
