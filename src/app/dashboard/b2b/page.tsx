@@ -72,71 +72,93 @@ export default function B2BDashboardPage() {
     setImportingBatch(true);
     setError('');
     setBatchSuccess('');
-    setClientScanProgress('Seçilen klasör taranıyor ve dosyalar gruplanıyor...');
+    setClientScanProgress('Seçilen klasör derinlemesine taranıyor ve tüm dosyalar analiz ediliyor...');
 
     try {
-      // Gruplama mantığı: Aşama 1 dosyalarını sipariş alt klasör ismine göre ayır
-      const groups: Record<string, { phase1?: File; phase3?: File }> = {};
+      // 1. Tüm geçerli dosyaları topla ve yol bilgilerini ayrıştır
+      const allFiles: { file: File; relPath: string; phase: number; orderCode: string; groupDir: string }[] = [];
 
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         const rel = f.webkitRelativePath || '';
-        if (!rel.endsWith('.csv') && !rel.endsWith('.xlsx') && !rel.endsWith('.xls')) continue;
+        const lowerRel = rel.toLowerCase();
 
-        // Path yapısı: Örn. "5-Triton - Mayıs/1-Triton-Mayıs-Firmadan Gelen CSV/ZP8-012074/ZP8-012074.csv"
+        // Arşivleri (.zip, .rar) atla
+        if (lowerRel.endsWith('.zip') || lowerRel.endsWith('.rar')) continue;
+        if (!lowerRel.endsWith('.csv') && !lowerRel.endsWith('.xlsx') && !lowerRel.endsWith('.xls')) continue;
+
         const parts = rel.split('/');
         if (parts.length < 3) continue;
 
-        // Dosyanın hemen üstündeki klasör adı sipariş/grup başlığıdır
+        // Yolun içinde 1-, 2-, 3-, 4- klasör adını tespit et
+        let phase = 0;
+        if (parts.some(p => p.startsWith('1-'))) phase = 1;
+        else if (parts.some(p => p.startsWith('2-'))) phase = 2;
+        else if (parts.some(p => p.startsWith('3-'))) phase = 3;
+        else if (parts.some(p => p.startsWith('4-'))) phase = 4;
+
+        if (phase === 0) continue;
+
+        // Sipariş Kodu: Dosya adının başındaki ilk kelime/kod parçası (Örn: "ZPK-010320", "ZP9-013772", "Z190007471")
+        const fileName = f.name;
+        const match = fileName.match(/^([A-Za-z0-9]+-[0-9]+|[A-Za-z0-9]+)/);
+        const orderCode = match ? match[0] : fileName.split(',')[0].split(' ')[0];
+
+        // Grup Klasörü: Dosyanın hemen üstündeki klasör adı
         const subDirName = parts[parts.length - 2];
-        
-        // Aşama 1 mi, Aşama 3 mü olduğunu yoldan anla
-        const isPhase1 = parts.some(p => p.startsWith('1-'));
-        const isPhase3 = parts.some(p => p.startsWith('3-'));
+        // Sadece sayı ve tireden oluşan (Örn: "18-", "19-") boş klasör kalıntılarını atla
+        if (/^\d+-$/.test(subDirName.trim())) continue;
 
-        if (!groups[subDirName]) groups[subDirName] = {};
-
-        if (isPhase1) groups[subDirName].phase1 = f;
-        if (isPhase3) groups[subDirName].phase3 = f;
+        allFiles.push({
+          file: f,
+          relPath: rel,
+          phase,
+          orderCode,
+          groupDir: subDirName
+        });
       }
 
-      const orderKeys = Object.keys(groups).filter(k => groups[k].phase1);
-      if (orderKeys.length === 0) {
-        throw new Error('Seçilen klasörde 1- ile başlayan alt klasörler veya geçerli CSV/Excel dosyası bulunamadı.');
+      // 2. Sadece Phase 1 dosyalarını (Gelen ham CSV'ler) baz alarak her birini bağımsız bir iş akışı olarak tanımla
+      const phase1Files = allFiles.filter(f => f.phase === 1);
+
+      if (phase1Files.length === 0) {
+        throw new Error('Seçilen klasör yapısında 1- ile başlayan alt klasörler içinde geçerli gelen CSV dosyası bulunamadı.');
       }
 
       let successCount = 0;
-      for (let idx = 0; idx < orderKeys.length; idx++) {
-        const key = orderKeys[idx];
-        const g = groups[key];
-        if (!g.phase1) continue;
+      for (let idx = 0; idx < phase1Files.length; idx++) {
+        const p1Item = phase1Files[idx];
+        
+        setClientScanProgress(`Siparişler aktarılıyor (${idx + 1}/${phase1Files.length}): ${p1Item.orderCode}...`);
 
-        setClientScanProgress(`Siparişler aktarılıyor (${idx + 1}/${orderKeys.length}): ${key}...`);
+        // Eşleşen Phase 3 dosyasını sipariş koduna göre otomatik bul (Örn: ZPK-010320 ile başlayan Phase 3 dosyası)
+        const p3Item = allFiles.find(f => f.phase === 3 && f.orderCode === p1Item.orderCode);
 
-        const p1Url = await uploadFileDirectly(g.phase1, g.phase1.name);
+        const p1Url = await uploadFileDirectly(p1Item.file, p1Item.file.name);
         let p3Url: string | null = null;
-
-        if (g.phase3) {
-          p3Url = await uploadFileDirectly(g.phase3, g.phase3.name);
+        if (p3Item) {
+          p3Url = await uploadFileDirectly(p3Item.file, p3Item.file.name);
         }
 
-        const title = `${key} • ${g.phase1.name.replace(/\.[^/.]+$/, '')}`;
+        // Sipariş Başlığı: "[Grup Klasörü] • [Dosya Adı]"
+        const cleanFileName = p1Item.file.name.replace(/\.[^/.]+$/, '');
+        const title = `${p1Item.groupDir} • ${cleanFileName}`;
 
         await createImportedOrderBatchClient({
           partnerId: selectedPartnerId,
           brandId: selectedBrandId || undefined,
           orderName: title.length > 255 ? title.substring(0, 250) : title,
           phase1FileUrl: p1Url,
-          phase1FileName: g.phase1.name,
+          phase1FileName: p1Item.file.name,
           phase3FileUrl: p3Url,
-          phase3FileName: g.phase3 ? g.phase3.name : null,
+          phase3FileName: p3Item ? p3Item.file.name : null,
         });
 
         successCount++;
       }
 
       await loadData();
-      setBatchSuccess(`✔ Muhteşem! Tarayıcı üzerinden ${successCount} adet sipariş grubu başarıyla buluta yüklendi ve iş akışına eklendi.`);
+      setBatchSuccess(`✔ Muhteşem! Tarayıcı üzerinden toplam ${successCount} adet bağımsız sipariş dosyası derinlemesine ayrıştırıldı, çapraz eşleştirildi ve iş akışına eklendi.`);
       // Reset input
       e.target.value = '';
     } catch (err: any) {
