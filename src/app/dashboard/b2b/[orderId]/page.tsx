@@ -145,11 +145,14 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const serverLogs = data?.logs ? `\n\nSunucu Trace Logları:\n- ${data.logs.join('\n- ')}` : '';
-      throw new Error((data?.error || 'Bulut depolama yüklemesi reddedildi.') + serverLogs);
+      throw new Error(`Bulut depolama yüklemesi reddedildi (HTTP ${res.status}).\n${data?.error || 'Bilinmeyen hata.'}${serverLogs}`);
     }
 
     if (data?.publicUrl) return data.publicUrl;
-    throw new Error('Sunucudan geçerli bir dosya URL\'si alınamadı.');
+    
+    // Detailed error if URL is missing despite 200 OK
+    const responseDebug = JSON.stringify(data);
+    throw new Error(`Sunucudan geçerli bir dosya URL'si alınamadı (HTTP 200 ama link yok).\nSunucu yanıtı: ${responseDebug}`);
   };
 
   // Phase 1 Upload Handler

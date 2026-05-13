@@ -85,7 +85,7 @@ export async function POST(req: Request) {
 
         // PROTOCOL 2: Zero-Dependency Direct HTTP REST Stream to Supabase Storage Gateway using native fetch
         log('PROTOCOL 2: Attempting zero-dependency native REST streaming upload bypass...');
-        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
+        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
         const targetRestUrl = `${baseUrl}/storage/v1/object/${bucketName}/${key}`;
         log(`REST target API string: "${targetRestUrl}" | AnonKey length: ${anonKey.length}`);
 
