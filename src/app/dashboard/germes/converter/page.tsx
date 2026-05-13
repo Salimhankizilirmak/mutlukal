@@ -82,7 +82,7 @@ export default function GermesConverterPage() {
         const rawStr = String(row[0]).trim();
         
         // Skip literal header strings
-        if (rawStr.toLowerCase().includes('kod') || rawStr.toLowerCase().includes('tarih')) continue;
+        if ((rawStr.toLowerCase().includes('kod') || rawStr.toLowerCase().includes('tarih')) && !rawStr.startsWith('01') && !rawStr.startsWith('(01)')) continue;
 
         const cleaned = cleanAndFormat(rawStr);
         if (cleaned) extractedProds.push(cleaned);

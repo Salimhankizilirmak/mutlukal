@@ -62,7 +62,7 @@ export default function GermesSplitterPage() {
         const row = data[i];
         if (!row || !row[0]) continue;
         const rawStr = String(row[0]).trim();
-        if (rawStr.toLowerCase().includes('kod') || rawStr.toLowerCase().includes('tarih')) continue;
+        if ((rawStr.toLowerCase().includes('kod') || rawStr.toLowerCase().includes('tarih')) && !rawStr.startsWith('01') && !rawStr.startsWith('(01)')) continue;
         
         const cleaned = cleanAndFormat(rawStr);
         if (cleaned) extracted.push(cleaned);
