@@ -2,9 +2,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Briefcase, Plus, FolderKanban, CheckCircle2, Clock, AlertCircle, ArrowRight, Layers, Building2, Tag, Loader2 } from 'lucide-react';
+import { Briefcase, Plus, FolderKanban, CheckCircle2, Clock, AlertCircle, ArrowRight, Layers, Building2, Tag, Loader2, Upload } from 'lucide-react';
 import Link from 'next/link';
-import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder } from './actions';
+import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder, importLocalHistoricalBatch } from './actions';
 
 export default function B2BDashboardPage() {
   const [partners, setPartners] = useState<Array<any>>([]);
@@ -20,6 +20,27 @@ export default function B2BDashboardPage() {
   const [newOrderName, setNewOrderName] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  
+  // Historical Bulk Import State
+  const [historicalPath, setHistoricalPath] = useState('Karekod İşlemleri/5-Triton - Mayıs');
+  const [importingBatch, setImportingBatch] = useState(false);
+  const [batchSuccess, setBatchSuccess] = useState('');
+
+  const handleBulkHistoricalImport = async () => {
+    if (!selectedPartnerId || !historicalPath.trim()) return;
+    setImportingBatch(true);
+    setError('');
+    setBatchSuccess('');
+    try {
+      const count = await importLocalHistoricalBatch(selectedPartnerId, selectedBrandId || undefined, historicalPath.trim());
+      await loadData();
+      setBatchSuccess(`✔ Harika! Toplam ${count} adet eski klasör/dosya tek tıkla iş akışı olarak içe aktarıldı.`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Toplu aktarım başarısız oldu.');
+    } finally {
+      setImportingBatch(false);
+    }
+  };
 
   const loadBrands = useCallback(async (pId: string) => {
     try {
@@ -289,6 +310,51 @@ export default function B2BDashboardPage() {
           ) : (
             <p className="text-xs text-zinc-600 text-center py-8">İş akışı başlatmak için partner seçimi zorunludur.</p>
           )}
+        </div>
+      </div>
+
+      {batchSuccess && (
+        <div className="flex items-center gap-2 p-4 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-2xl text-xs font-bold">
+          <CheckCircle2 size={16} />
+          <span>{batchSuccess}</span>
+        </div>
+      )}
+
+      {/* Historical Bulk Importer Card */}
+      <div className="bg-gradient-to-r from-amber-950/20 via-zinc-950 to-amber-950/10 border border-amber-500/20 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-40 h-40 bg-amber-500/5 rounded-full blur-2xl pointer-events-none"></div>
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="space-y-1 max-w-xl">
+            <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wider">
+              <Upload size={16} />
+              <span>Geçmiş Klasörleri Tek Tuşla İçe Aktar (Toplu Otomasyon)</span>
+            </div>
+            <p className="text-xs text-zinc-400">
+              Bilgisayarınızdaki mevcut yerel klasörleri tarayarak her bir alt klasörü/CSV dosyasını anında ayrı bir iş akışı olarak sisteme tanımlar. Tek tek yükleme zahmetinden kurtulun.
+            </p>
+          </div>
+
+          <div className="w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+            <div className="space-y-0.5">
+              <span className="text-[9px] font-bold text-zinc-500 uppercase block">Yerel Klasör Yolu</span>
+              <input
+                type="text"
+                value={historicalPath}
+                onChange={e => setHistoricalPath(e.target.value)}
+                placeholder="Örn: Karekod İşlemleri/5-Triton - Mayıs"
+                className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-amber-100 outline-none focus:border-amber-500/50 w-full sm:w-64 font-mono text-[11px]"
+              />
+            </div>
+
+            <button
+              onClick={handleBulkHistoricalImport}
+              disabled={importingBatch || !selectedPartnerId || !historicalPath.trim()}
+              className="bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 disabled:opacity-30 text-zinc-950 font-extrabold px-4 py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-950/30 self-end h-[34px]"
+            >
+              {importingBatch ? <Loader2 size={14} className="animate-spin text-zinc-950" /> : <Upload size={14} />}
+              <span>{importingBatch ? 'Taranıyor...' : 'Toplu İçe Aktar'}</span>
+            </button>
+          </div>
         </div>
       </div>
 

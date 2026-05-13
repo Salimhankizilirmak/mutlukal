@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use server';
 
 import { db } from '@/db';
@@ -5,6 +6,8 @@ import { b2bPartners, b2bBrands, b2bOrders } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { getFactoryContext } from '@/lib/auth-context';
 import { revalidatePath } from 'next/cache';
+import fs from 'fs';
+import path from 'path';
 
 export async function getPartners() {
   const context = await getFactoryContext();
@@ -129,3 +132,91 @@ export async function updateOrderPhase(orderId: string, phase: 1 | 2 | 3 | 4, fi
   revalidatePath(`/dashboard/b2b/${orderId}`);
   return updated;
 }
+
+export async function importLocalHistoricalBatch(partnerId: string, brandId?: string, relativePublicPath = 'Karekod İşlemleri/5-Triton - Mayıs') {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+
+  const fullBasePath = path.join(process.cwd(), 'public', ...relativePublicPath.split('/'));
+  if (!fs.existsSync(fullBasePath)) {
+    throw new Error(`Belirtilen yerel klasör bulunamadı: ${relativePublicPath}`);
+  }
+
+  // Gelen CSV (Aşama 1) ve Cihazdan Gelen (Aşama 3) klasörlerini bul
+  const baseEntries = await fs.promises.readdir(fullBasePath, { withFileTypes: true });
+  let phase1DirName = '';
+  let phase3DirName = '';
+
+  for (const entry of baseEntries) {
+    if (entry.isDirectory()) {
+      if (entry.name.startsWith('1-')) phase1DirName = entry.name;
+      if (entry.name.startsWith('3-')) phase3DirName = entry.name;
+    }
+  }
+
+  if (!phase1DirName) {
+    throw new Error(`Aşama 1 klasörü (1- ile başlayan) bulunamadı.`);
+  }
+
+  const phase1AbsPath = path.join(fullBasePath, phase1DirName);
+  const subDirs = await fs.promises.readdir(phase1AbsPath, { withFileTypes: true });
+
+  let importedCount = 0;
+
+  for (const sub of subDirs) {
+    if (!sub.isDirectory()) continue;
+
+    const subDirPath = path.join(phase1AbsPath, sub.name);
+    const files = await fs.promises.readdir(subDirPath);
+
+    for (const file of files) {
+      if (!file.endsWith('.csv') && !file.endsWith('.xlsx') && !file.endsWith('.xls')) continue;
+
+      // Sade ve anlaşılır sipariş başlığı
+      const orderTitle = `${sub.name} • ${file.replace(/\.[^/.]+$/, '')}`;
+      const phase1Url = `/${relativePublicPath}/${phase1DirName}/${sub.name}/${file}`;
+
+      // Aşama 3 dosyası var mı kontrol et
+      let phase3Url: string | null = null;
+      let phase3Name: string | null = null;
+
+      if (phase3DirName) {
+        const phase3SubPath = path.join(fullBasePath, phase3DirName, sub.name);
+        if (fs.existsSync(phase3SubPath)) {
+          try {
+            const p3Files = await fs.promises.readdir(phase3SubPath);
+            for (const p3f of p3Files) {
+              if (p3f.endsWith('.xlsx') || p3f.endsWith('.xls') || p3f.endsWith('.csv')) {
+                phase3Url = `/${relativePublicPath}/${phase3DirName}/${sub.name}/${p3f}`;
+                phase3Name = p3f;
+                break;
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      const statusVal = phase3Url ? 'phase4_pending' : 'phase2_pending';
+
+      await db.insert(b2bOrders).values({
+        partnerId,
+        brandId: brandId || null,
+        orderName: orderTitle.length > 255 ? orderTitle.substring(0, 250) : orderTitle,
+        phase1FileUrl: phase1Url,
+        phase1FileName: file,
+        phase3FileUrl: phase3Url,
+        phase3FileName: phase3Name,
+        status: statusVal as any,
+        orgId: context.factoryId,
+      });
+
+      importedCount++;
+    }
+  }
+
+  revalidatePath('/dashboard/b2b');
+  return importedCount;
+}
+
