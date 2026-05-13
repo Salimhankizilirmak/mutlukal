@@ -52,8 +52,9 @@ export async function POST(req: Request) {
         await s3Client.send(command);
         const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_ENDPOINT?.replace('/storage/v1/s3', '').replace('.storage.', '.') || '';
         publicUrl = `${baseUrl}/storage/v1/object/public/${bucketName}/${key}`;
-      } catch (s3Err) {
-        console.warn('S3 bulut yüklemesi atlandı veya başarısız oldu, lokal public/b2b-uploads dizinine yedekleniyor:', s3Err);
+      } catch (s3Err: unknown) {
+        const msg = s3Err instanceof Error ? s3Err.message : String(s3Err);
+        console.error('SUPABASE S3 BULUT YÜKLEME REDDEDİLDİ (POLİTİKA/YETKİ HATASI):', msg);
         // Fallback persist locally to ensure zero operational friction
         const uploadDir = path.join(process.cwd(), 'public', 'b2b-uploads', context.factoryId);
         await fs.promises.mkdir(uploadDir, { recursive: true });
