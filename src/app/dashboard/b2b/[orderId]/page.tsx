@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, CheckCircle2, Clock, Upload, Download, RefreshCw, FileText, AlertCircle, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Clock, Upload, Download, RefreshCw, FileText, AlertCircle, Loader2, Sparkles, Eye, X } from 'lucide-react';
 import Link from 'next/link';
 import * as XLSX from 'xlsx';
 import { getOrderById, updateOrderPhase, clearPhaseFile, updatePhaseNote } from '../actions';
@@ -54,6 +54,15 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
 
   // Global SSCC counter state tracker
   const [activeSSCC, setActiveSSCC] = useState<string>('');
+
+  // Premium File Previewer Modal State
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [previewTitle, setPreviewTitle] = useState('');
+  const [previewType, setPreviewType] = useState<'xlsx' | 'csv' | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewContentCsv, setPreviewContentCsv] = useState<string>('');
+  const [previewSheetsData, setPreviewSheetsData] = useState<{ [sheetName: string]: { headers: string[]; rows: any[][] } }>({});
+  const [previewActiveTabSheet, setPreviewActiveTabSheet] = useState<string>('');
 
   const fetchOrder = useCallback(async () => {
     try {
@@ -367,6 +376,69 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     }
   };
 
+  // Trigger file preview loading logic
+  const handleOpenPreview = async (url: string, filename: string) => {
+    setPreviewTitle(filename);
+    setPreviewModalOpen(true);
+    setPreviewLoading(true);
+    setPreviewContentCsv('');
+    setPreviewSheetsData({});
+    setPreviewActiveTabSheet('');
+
+    const lowerName = filename.toLowerCase();
+    const isXlsx = lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls');
+    setPreviewType(isXlsx ? 'xlsx' : 'csv');
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Dosya içeriği sunucudan alınamadı.');
+
+      if (isXlsx) {
+        const buffer = await res.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const sheetsMap: { [sheetName: string]: { headers: string[]; rows: any[][] } } = {};
+        
+        wb.SheetNames.forEach(sheetName => {
+          const ws = wb.Sheets[sheetName];
+          const rawMatrix = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+          
+          // Let's create uniform headers like Excel: A, B, C, D...
+          let maxCols = 0;
+          rawMatrix.forEach(r => { if (r && r.length > maxCols) maxCols = r.length; });
+          
+          const letters: string[] = [];
+          for (let c = 0; c < maxCols; c++) {
+            let colName = '';
+            let temp = c;
+            while (temp >= 0) {
+              colName = String.fromCharCode(65 + (temp % 26)) + colName;
+              temp = Math.floor(temp / 26) - 1;
+            }
+            letters.push(colName || 'A');
+          }
+          
+          sheetsMap[sheetName] = {
+            headers: letters,
+            rows: rawMatrix
+          };
+        });
+
+        setPreviewSheetsData(sheetsMap);
+        if (wb.SheetNames.length > 0) {
+          setPreviewActiveTabSheet(wb.SheetNames[0]);
+        }
+      } else {
+        const text = await res.text();
+        setPreviewContentCsv(text);
+      }
+    } catch (err: any) {
+      setPreviewContentCsv(`HATA: Dosya önizlemesi yüklenemedi.\nDetay: ${err.message || 'Bilinmeyen ağ hatası.'}`);
+      setPreviewType('csv');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex justify-center items-center min-h-[400px]"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>;
   }
@@ -436,9 +508,18 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
               <div className="p-3 bg-emerald-500/5 rounded-xl border border-emerald-500/10 space-y-2">
                 <div>
                   <p className="text-[10px] text-zinc-500 font-bold uppercase">Yüklü Ana Bulut Dosyası</p>
-                  <a href={o.phase1FileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-emerald-300 hover:underline block truncate mt-0.5">
-                    {o.phase1FileName}
-                  </a>
+                  <div className="flex items-center justify-between gap-2 mt-0.5">
+                    <a href={o.phase1FileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-emerald-300 hover:underline block truncate">
+                      {o.phase1FileName}
+                    </a>
+                    <button
+                      onClick={() => handleOpenPreview(o.phase1FileUrl, o.phase1FileName)}
+                      title="İçeriği Excel / Notepad++ arayüzü ile anında görüntüleyin"
+                      className="shrink-0 flex items-center gap-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors outline-none"
+                    >
+                      <Eye size={12} /> Önizle
+                    </button>
+                  </div>
                 </div>
 
                 {o.phase1AllFiles && (
@@ -530,9 +611,18 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
               <div className="p-3 bg-purple-500/5 rounded-xl border border-purple-500/10 space-y-2">
                 <div>
                   <p className="text-[10px] text-zinc-500 font-bold uppercase">Üretilen / Yüklenen Bulut Şablonu</p>
-                  <a href={o.phase2FileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-purple-300 hover:underline block truncate mt-0.5">
-                    {o.phase2FileName}
-                  </a>
+                  <div className="flex items-center justify-between gap-2 mt-0.5">
+                    <a href={o.phase2FileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-purple-300 hover:underline block truncate">
+                      {o.phase2FileName}
+                    </a>
+                    <button
+                      onClick={() => handleOpenPreview(o.phase2FileUrl, o.phase2FileName)}
+                      title="İçeriği Excel / Notepad++ arayüzü ile anında görüntüleyin"
+                      className="shrink-0 flex items-center gap-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors outline-none"
+                    >
+                      <Eye size={12} /> Önizle
+                    </button>
+                  </div>
                 </div>
 
                 {o.phase2AllFiles && (
@@ -637,9 +727,18 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
               <div className="p-3 bg-blue-500/5 rounded-xl border border-blue-500/10 space-y-2">
                 <div>
                   <p className="text-[10px] text-zinc-500 font-bold uppercase">Yüklü Ana Üretim Sonucu</p>
-                  <a href={o.phase3FileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-blue-300 hover:underline block truncate mt-0.5">
-                    {o.phase3FileName}
-                  </a>
+                  <div className="flex items-center justify-between gap-2 mt-0.5">
+                    <a href={o.phase3FileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-blue-300 hover:underline block truncate">
+                      {o.phase3FileName}
+                    </a>
+                    <button
+                      onClick={() => handleOpenPreview(o.phase3FileUrl, o.phase3FileName)}
+                      title="İçeriği Excel / Notepad++ arayüzü ile anında görüntüleyin"
+                      className="shrink-0 flex items-center gap-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors outline-none"
+                    >
+                      <Eye size={12} /> Önizle
+                    </button>
+                  </div>
                 </div>
 
                 {o.phase3AllFiles && (
@@ -736,9 +835,18 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
               <div className="p-3 bg-indigo-500/5 rounded-xl border border-indigo-500/10 space-y-2">
                 <div>
                   <p className="text-[10px] text-zinc-500 font-bold uppercase">Tamamlanan / Yüklenen Bulut Raporu</p>
-                  <a href={o.phase4FileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-300 hover:underline block truncate mt-0.5">
-                    {o.phase4FileName}
-                  </a>
+                  <div className="flex items-center justify-between gap-2 mt-0.5">
+                    <a href={o.phase4FileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-300 hover:underline block truncate">
+                      {o.phase4FileName}
+                    </a>
+                    <button
+                      onClick={() => handleOpenPreview(o.phase4FileUrl, o.phase4FileName)}
+                      title="İçeriği Excel / Notepad++ arayüzü ile anında görüntüleyin"
+                      className="shrink-0 flex items-center gap-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors outline-none"
+                    >
+                      <Eye size={12} /> Önizle
+                    </button>
+                  </div>
                 </div>
 
                 {o.phase4AllFiles && (
@@ -836,6 +944,142 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
         </div>
 
       </div>
+
+      {/* Premium Dynamic Previewer Overlay Modal */}
+      {previewModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
+              <div className="flex items-center gap-2 min-w-0">
+                {previewType === 'xlsx' ? (
+                  <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold shrink-0">EXCEL PREVIEW</span>
+                ) : (
+                  <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px] font-bold shrink-0">NOTEPAD++ PREVIEW</span>
+                )}
+                <h3 className="text-xs font-bold text-zinc-200 truncate font-mono">{previewTitle}</h3>
+              </div>
+              <button
+                onClick={() => setPreviewModalOpen(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Content / Previewers */}
+            <div className="flex-1 overflow-hidden flex flex-col bg-zinc-900/50 relative">
+              {previewLoading ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3">
+                  <Loader2 className="animate-spin text-indigo-500" size={32} />
+                  <span className="text-xs text-zinc-400 font-medium">Dosya verileri buluttan alınıyor ve arayüz işleniyor...</span>
+                </div>
+              ) : previewType === 'xlsx' ? (
+                /* Excel Visualizer Interface */
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  {/* Sheets navigation tabs */}
+                  <div className="flex items-center gap-1 px-2 pt-2 bg-zinc-900 border-b border-zinc-800 overflow-x-auto">
+                    {Object.keys(previewSheetsData).map(sheetName => (
+                      <button
+                        key={sheetName}
+                        onClick={() => setPreviewActiveTabSheet(sheetName)}
+                        className={`px-3 py-1.5 rounded-t-lg text-xs font-bold transition-colors shrink-0 border-t border-x ${previewActiveTabSheet === sheetName ? 'bg-zinc-950 text-emerald-400 border-emerald-500/30' : 'bg-zinc-900/40 text-zinc-500 border-transparent hover:text-zinc-300'}`}
+                      >
+                        📊 {sheetName}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Excel Spreadsheet Table Data Container */}
+                  <div className="flex-1 overflow-auto bg-zinc-950/80 p-0">
+                    {previewSheetsData[previewActiveTabSheet] ? (
+                      <table className="w-full border-collapse text-[11px]">
+                        <thead>
+                          <tr className="sticky top-0 z-10 bg-zinc-900">
+                            <th className="w-10 bg-zinc-900 border border-zinc-800 text-zinc-500 font-mono text-[10px] sticky left-0 z-20">#</th>
+                            {previewSheetsData[previewActiveTabSheet].headers.map((hCol, cIdx) => (
+                              <th key={cIdx} className="px-3 py-1 bg-zinc-900 border border-zinc-800 text-zinc-300 font-bold text-center min-w-[100px]">
+                                {hCol}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previewSheetsData[previewActiveTabSheet].rows.map((rowCells, rIdx) => (
+                            <tr key={rIdx} className="hover:bg-zinc-900/40">
+                              <td className="w-10 bg-zinc-900/90 border border-zinc-800 text-zinc-500 font-mono text-[10px] text-center sticky left-0 z-10 select-none">
+                                {rIdx + 1}
+                              </td>
+                              {previewSheetsData[previewActiveTabSheet].headers.map((_, colIdx) => {
+                                const val = rowCells ? rowCells[colIdx] : '';
+                                return (
+                                  <td key={colIdx} className="px-2.5 py-1 border border-zinc-800/80 text-zinc-300 font-mono truncate max-w-[250px]">
+                                    {val !== undefined && val !== null ? String(val) : ''}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="p-8 text-center text-zinc-600 text-xs italic">Seçili sekmede veri bulunmuyor.</div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* Notepad++ Visualizer Interface */
+                <div className="flex-1 flex flex-col overflow-hidden bg-[#1e1e1e]">
+                  {/* Editor Tab Bar */}
+                  <div className="flex items-center gap-1 px-2 pt-1.5 bg-[#252526] border-b border-[#333]">
+                    <div className="bg-[#1e1e1e] text-zinc-300 px-3 py-1 rounded-t-md text-[11px] font-mono flex items-center gap-1.5 border-t border-x border-[#333] shrink-0">
+                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                      {previewTitle}
+                    </div>
+                  </div>
+
+                  {/* Notepad++ Editor lines view */}
+                  <div className="flex-1 overflow-auto p-0 font-mono text-[11px] leading-relaxed select-text">
+                    {previewContentCsv ? (
+                      <div className="flex min-w-max">
+                        {/* Line numbers column */}
+                        <div className="shrink-0 bg-[#1e1e1e] text-[#858585] py-2 px-3 select-none text-right border-r border-[#333] sticky left-0 z-10">
+                          {previewContentCsv.split('\n').map((_, idx) => (
+                            <div key={idx} className="h-5 leading-5">{idx + 1}</div>
+                          ))}
+                        </div>
+                        {/* Text lines column */}
+                        <div className="flex-1 py-2 px-4 text-[#d4d4d4] overflow-x-auto whitespace-pre">
+                          {previewContentCsv.split('\n').map((lineText, idx) => (
+                            <div key={idx} className="h-5 leading-5 flex items-center">
+                              <span className="text-[#ce9178]">{lineText || ' '}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-8 text-center text-zinc-600 text-xs italic">Dosya içeriği boş.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-4 py-2.5 bg-zinc-950 border-t border-zinc-800 flex items-center justify-between text-[11px] text-zinc-500">
+              <span>İpucu: Hücreleri veya satırları sürükleyerek kopyalayabilirsiniz.</span>
+              <button
+                onClick={() => setPreviewModalOpen(false)}
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold px-3 py-1 rounded-lg transition-colors"
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
