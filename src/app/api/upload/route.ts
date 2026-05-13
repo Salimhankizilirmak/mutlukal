@@ -56,8 +56,13 @@ export async function POST(req: Request) {
       const asciiBase = baseNameWithoutExt.replace(/[^a-zA-Z0-9\-_]/g, '_').replace(/_+/g, '_');
       const safeFilename = `${asciiBase}${ext}`;
       const key = `b2b/${context.factoryId}/${Date.now()}_${safeFilename}`;
-      const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_ENDPOINT?.replace('/storage/v1/s3', '').replace('.storage.', '.') || '';
-      log(`Constructed Storage Key: "${key}" | Base Supabase URL: "${baseUrl}"`);
+      
+      // Akıllı URL Tespiti: Supabase endpoint'inden base URL çıkar
+      let baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+      if (!baseUrl && process.env.SUPABASE_ENDPOINT) {
+        baseUrl = process.env.SUPABASE_ENDPOINT.split('/storage/')[0];
+      }
+      log(`Constructed Storage Key: "${key}" | Resolved Base URL: "${baseUrl}"`);
 
       let publicUrl = '';
       let protocol1Error = '';

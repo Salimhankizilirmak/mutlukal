@@ -180,7 +180,9 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     try {
       // Fetch phase 1 raw contents as string text to avoid breaking control chars via sheet_to_json
       const res = await fetch(orderData.order.phase1FileUrl);
-      if (!res.ok) throw new Error(`Kaynak dosya okunamadı (${res.status}). Lütfen dosyayı tekrar yüklemeyi deneyin.`);
+      if (!res.ok) {
+        throw new Error(`Kaynak dosya okunamadı (HTTP ${res.status}). \nAdres: ${orderData.order.phase1FileUrl}\nLütfen dosyayı silip tekrar yüklemeyi deneyin.`);
+      }
       const text = await res.text();
       const cleanText = text.startsWith('\ufeff') ? text.slice(1) : text;
       
