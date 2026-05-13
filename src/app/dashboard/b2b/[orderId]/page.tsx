@@ -107,23 +107,22 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
 
   // General Direct Cloud Upload Logic via Proxy Route with Unbreakable Simulation Fallback
   const uploadToCloud = async (file: File, requestedFilename: string) => {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('filename', requestedFilename);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('filename', requestedFilename);
 
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
 
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        if (data?.publicUrl) return data.publicUrl;
-      }
-    } catch (e) {
-      console.warn('API proxy uploader adımı atlandı, simüle URL atanıyor:', e);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const serverLogs = data?.logs ? `\n\nSunucu Trace Logları:\n- ${data.logs.join('\n- ')}` : '';
+      throw new Error((data?.error || 'Bulut depolama yüklemesi reddedildi.') + serverLogs);
     }
+
+    if (data?.publicUrl) return data.publicUrl;
     return `/b2b-uploads/local/${encodeURIComponent(requestedFilename)}`;
   };
 

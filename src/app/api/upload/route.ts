@@ -8,12 +8,20 @@ import fs from 'fs';
 import path from 'path';
 
 export async function POST(req: Request) {
+  const diagnosticLogs: string[] = [];
+  const log = (msg: string) => {
+    console.log(`[UPLOAD DIAGNOSTIC] ${msg}`);
+    diagnosticLogs.push(msg);
+  };
+
   try {
+    log('Upload POST endpoint triggered.');
     let context: { factoryId: string; role?: string } = { factoryId: '' };
     try {
       context = await getFactoryContext();
-    } catch (authErr) {
-      console.warn('API Route yetkilendirmesi atlandı, sandbox-factory bağlamı kullanılıyor:', authErr);
+      log(`Factory Auth Context resolved: ${context.factoryId}`);
+    } catch {
+      log('API Route auth mapping skipped, utilizing fallback sandbox-factory context.');
       context = { factoryId: 'sandbox-factory', role: 'Developer' };
     }
 
@@ -23,28 +31,36 @@ export async function POST(req: Request) {
 
     const contentTypeHeader = req.headers.get('content-type') || '';
     const bucketName = process.env.SUPABASE_BUCKET_NAME || 'lavas-batches';
+    log(`Target Bucket: "${bucketName}" | Content-Type Header: "${contentTypeHeader}"`);
 
     // 1. Doğrudan Sunucu Üzerinden Dosya Yükleme (CORS Bloklarını ve Emülasyon Sınırlarını Atlar)
     if (contentTypeHeader.includes('multipart/form-data')) {
+      log('Parsing multi-part form data payload...');
       const formData = await req.formData();
       const file = formData.get('file') as File | null;
       let filename = formData.get('filename') as string | null;
 
       if (!file) {
-        return NextResponse.json({ error: 'Dosya bulunamadı' }, { status: 400 });
+        log('ERROR: File payload missing in form data.');
+        return NextResponse.json({ error: 'Dosya bulunamadı', logs: diagnosticLogs }, { status: 400 });
       }
 
       filename = filename || file.name;
       const contentType = file.type || 'application/octet-stream';
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
+      log(`File parsed successfully. Name: "${filename}" | Size: ${buffer.length} bytes | MIME: "${contentType}"`);
 
       const key = `b2b/${context.factoryId}/${Date.now()}_${filename}`;
       const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_ENDPOINT?.replace('/storage/v1/s3', '').replace('.storage.', '.') || '';
-      let publicUrl = '';
+      log(`Constructed Storage Key: "${key}" | Base Supabase URL: "${baseUrl}"`);
 
+      let publicUrl = '';
+      let protocol1Error = '';
+
+      // PROTOCOL 1: Standard AWS S3 Client Gateway
       try {
-        // PROTOCOL 1: Standard AWS S3 Client Multi-part Gateway
+        log('PROTOCOL 1: Invoking standard AWS S3 REST API via @aws-sdk/client-s3...');
         const command = new PutObjectCommand({
           Bucket: bucketName,
           Key: key,
@@ -53,13 +69,16 @@ export async function POST(req: Request) {
         });
         await s3Client.send(command);
         publicUrl = `${baseUrl}/storage/v1/object/public/${bucketName}/${key}`;
+        log(`✔ PROTOCOL 1 SUCCESS! Public URL generated: ${publicUrl}`);
       } catch (s3Err: unknown) {
-        const msg = s3Err instanceof Error ? s3Err.message : String(s3Err);
-        console.warn('AWS S3 SDK yükleme protokolü başarısız, yerleşik doğrudan Supabase REST API akışı deneniyor...', msg);
+        protocol1Error = s3Err instanceof Error ? s3Err.message : String(s3Err);
+        log(`✘ PROTOCOL 1 FAILED: ${protocol1Error}`);
 
         // PROTOCOL 2: Zero-Dependency Direct HTTP REST Stream to Supabase Storage Gateway using native fetch
+        log('PROTOCOL 2: Attempting zero-dependency native REST streaming upload bypass...');
         const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
         const targetRestUrl = `${baseUrl}/storage/v1/object/${bucketName}/${key}`;
+        log(`REST target API string: "${targetRestUrl}" | AnonKey length: ${anonKey.length}`);
 
         const restRes = await fetch(targetRestUrl, {
           method: 'POST',
@@ -72,26 +91,40 @@ export async function POST(req: Request) {
 
         if (restRes.ok) {
           publicUrl = `${baseUrl}/storage/v1/object/public/${bucketName}/${key}`;
+          log(`✔ PROTOCOL 2 SUCCESS! File written natively to bucket via REST. URL: ${publicUrl}`);
         } else {
           const errText = await restRes.text().catch(() => '');
-          console.error('SUPABASE REST YÜKLEME REDDEDİLDİ:', restRes.status, errText);
+          log(`✘ PROTOCOL 2 FAILED: HTTP ${restRes.status} | Response text: ${errText}`);
 
-          // Fallback to local persist if absolutely running on a persistent non-Vercel environment
+          const isCloudEnv = process.env.VERCEL || process.env.NODE_ENV === 'production';
+          if (isCloudEnv) {
+            log('CRITICAL: Running on cloud deployment. Refusing to swallow cloud upload failure into ephemeral storage.');
+            return NextResponse.json({
+              error: `Bulut depolama yazma izni reddedildi!\nS3 Hatası: ${protocol1Error}\nREST Hatası (${restRes.status}): ${errText}`,
+              logs: diagnosticLogs,
+            }, { status: 500 });
+          }
+
+          log('Warning: Running locally on Windows. Persisting file locally as a development fallback.');
           const uploadDir = path.join(process.cwd(), 'public', 'b2b-uploads', context.factoryId);
           await fs.promises.mkdir(uploadDir, { recursive: true }).catch(() => {});
           const safeName = `${Date.now()}_${filename}`;
           await fs.promises.writeFile(path.join(uploadDir, safeName), buffer).catch(() => {});
           publicUrl = `/b2b-uploads/${context.factoryId}/${safeName}`;
+          log(`Fallback local URL configured: ${publicUrl}`);
         }
       }
 
-      return NextResponse.json({ publicUrl, key });
+      log('Upload sequence finalized beautifully.');
+      return NextResponse.json({ publicUrl, key, logs: diagnosticLogs });
     }
 
     // 2. Geriye Dönük Uyumluluk (JSON tabanlı Presigned URL İsteği)
+    log('Processing backwards-compatible presigned URL JSON mode.');
     const { filename, contentType } = await req.json();
     if (!filename || !contentType) {
-      return NextResponse.json({ error: 'Filename ve contentType gerekli' }, { status: 400 });
+      log('ERROR: Presigned parameters missing.');
+      return NextResponse.json({ error: 'Filename ve contentType gerekli', logs: diagnosticLogs }, { status: 400 });
     }
 
     const key = `b2b/${context.factoryId}/${Date.now()}_${filename}`;
@@ -105,10 +138,11 @@ export async function POST(req: Request) {
     const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_ENDPOINT?.replace('/storage/v1/s3', '').replace('.storage.', '.') || '';
     const publicUrl = `${baseUrl}/storage/v1/object/public/${bucketName}/${key}`;
 
-    return NextResponse.json({ presignedUrl, publicUrl, key });
+    log(`Presigned mapping success. URL: ${publicUrl}`);
+    return NextResponse.json({ presignedUrl, publicUrl, key, logs: diagnosticLogs });
   } catch (error: unknown) {
-    console.error('Upload endpoint global error:', error);
     const errMsg = error instanceof Error ? error.message : 'Dosya işlenemedi veya URL oluşturulamadı';
-    return NextResponse.json({ error: errMsg }, { status: 500 });
+    log(`FATAL ERROR: ${errMsg}`);
+    return NextResponse.json({ error: errMsg, logs: diagnosticLogs }, { status: 500 });
   }
 }
