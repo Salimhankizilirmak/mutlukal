@@ -51,7 +51,11 @@ export async function POST(req: Request) {
       const buffer = Buffer.from(arrayBuffer);
       log(`File parsed successfully. Name: "${filename}" | Size: ${buffer.length} bytes | MIME: "${contentType}"`);
 
-      const key = `b2b/${context.factoryId}/${Date.now()}_${filename}`;
+      const ext = path.extname(filename);
+      const baseNameWithoutExt = path.basename(filename, ext);
+      const asciiBase = baseNameWithoutExt.replace(/[^a-zA-Z0-9\-_]/g, '_').replace(/_+/g, '_');
+      const safeFilename = `${asciiBase}${ext}`;
+      const key = `b2b/${context.factoryId}/${Date.now()}_${safeFilename}`;
       const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_ENDPOINT?.replace('/storage/v1/s3', '').replace('.storage.', '.') || '';
       log(`Constructed Storage Key: "${key}" | Base Supabase URL: "${baseUrl}"`);
 
@@ -127,7 +131,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Filename ve contentType gerekli', logs: diagnosticLogs }, { status: 400 });
     }
 
-    const key = `b2b/${context.factoryId}/${Date.now()}_${filename}`;
+    const ext = path.extname(filename);
+    const baseNameWithoutExt = path.basename(filename, ext);
+    const asciiBase = baseNameWithoutExt.replace(/[^a-zA-Z0-9\-_]/g, '_').replace(/_+/g, '_');
+    const safeFilename = `${asciiBase}${ext}`;
+    const key = `b2b/${context.factoryId}/${Date.now()}_${safeFilename}`;
     const command = new PutObjectCommand({
       Bucket: bucketName,
       Key: key,
