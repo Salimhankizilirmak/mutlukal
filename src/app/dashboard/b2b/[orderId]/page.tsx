@@ -190,19 +190,32 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     setError('');
     setSuccess('');
     try {
-      // Fetch phase 1 raw contents as string text to avoid breaking control chars via sheet_to_json
-      const res = await fetch(orderData.order.phase1FileUrl);
+      // 1. URL'yi güvenli hale getir (Rusça karakterler için)
+      const targetUrl = orderData.order.phase1FileUrl.startsWith('http') 
+        ? orderData.order.phase1FileUrl 
+        : window.location.origin + orderData.order.phase1FileUrl;
+
+      // 2. Kaynak dosyayı çek
+      const res = await fetch(targetUrl);
       if (!res.ok) {
-        throw new Error(`Kaynak dosya okunamadı (HTTP ${res.status}). \nAdres: ${orderData.order.phase1FileUrl}\nLütfen dosyayı silip tekrar yüklemeyi deneyin.`);
+        throw new Error(`Kaynak dosya sunucudan alınamadı (HTTP ${res.status}).\nAdres: ${targetUrl}`);
       }
+
+      // 3. İçeriğin HTML (404) olup olmadığını kontrol et
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) {
+        throw new Error('HATA: Kaynak dosya yerine bir web sayfası (404) döndü. Lütfen dosyayı silip tekrar yükleyin.');
+      }
+
       const text = await res.text();
       const cleanText = text.startsWith('\ufeff') ? text.slice(1) : text;
       
       const sep = detectSeparator(cleanText);
       const rows = cleanText.split(/\r\n|\r|\n/).filter(line => line.trim() !== '');
+      
+      // GS1 Dönüştürücü (Convert) Mantığı:
       const data = rows.map(row => {
         const cols = row.split(sep);
-        // Akıllı Birleştirme: Eğer veri bölünmüşse tek hücrede topla ve formatla
         const rawLine = cols.length > 1 ? cols.join(' ') : cols[0];
         return [cleanAndFormat(rawLine)];
       });
@@ -211,28 +224,22 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       const targetWb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(targetWb, targetWs, 'Sheet1');
 
-      const outBuffer = XLSX.write(targetWb, { type: 'array', bookType: 'xlsx' });
-
-      const baseName = orderData.order.phase1FileName ? orderData.order.phase1FileName.replace(/\.csv|\.txt/i, '') : `${orderData.partnerName}_${orderData.brandName || 'Genel'}`;
+      // 4. XLSX Dosyasını Oluştur
+      const baseName = orderData.order.phase1FileName ? orderData.order.phase1FileName.replace(/\.csv|\.txt/i, '') : `${orderData.partnerName}_Şablon`;
       const generatedName = `${baseName}.xlsx`;
+      
+      // Buluta Yükleme Hazırlığı
+      const outBuffer = XLSX.write(targetWb, { type: 'array', bookType: 'xlsx' });
       const fileObj = new File([outBuffer], generatedName, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
       const url = await uploadToCloud(fileObj, generatedName);
       await updateOrderPhase(params.orderId, 2, url, generatedName);
       
-      // Client direct native download trigger
-      const blob = new Blob([outBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const downloadUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = generatedName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(downloadUrl);
+      // 5. Doğrudan İndirme (XLSX.writeFile ile daha güvenli)
+      XLSX.writeFile(targetWb, generatedName);
 
       await fetchOrder();
-      setSuccess(`✔ Aşama 2 (Makine Hat Şablonu) GS1 karakterleri bozulmadan tek sütunlu XLSX olarak üretildi, buluta kaydedildi ve indirildi: ${generatedName}`);
+      setSuccess(`✔ Aşama 2 (Makine Hat Şablonu) başarıyla üretildi ve buluta kaydedildi: ${generatedName}`);
     } catch (err: any) {
       setError(err.message);
     } finally {
