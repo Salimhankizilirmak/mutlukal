@@ -3,7 +3,7 @@
 
 import { db } from '@/db';
 import { b2bPartners, b2bBrands, b2bOrders, b2bSettings } from '@/db/schema';
-import { eq, desc, and, like } from 'drizzle-orm';
+import { eq, desc, and, like, or } from 'drizzle-orm';
 import { getFactoryContext } from '@/lib/auth-context';
 import { revalidatePath } from 'next/cache';
 import fs from 'fs';
@@ -387,13 +387,20 @@ export async function deleteMonthFromList(monthId: string) {
     const targetMonth = data.months.find((m: any) => m.monthId === monthId);
     
     if (targetMonth) {
-      // 1. Bu ayın araçlarını (orderName prefix) tespit et ve sil
-      for (const vehicleName of targetMonth.orderCodes) {
-        // b2bOrders tablosunda orderName 'AraçAdı •' ile başlayanları sil
-        await db.delete(b2bOrders).where(and(
-          eq(b2bOrders.orgId, context.factoryId),
-          like(b2bOrders.orderName, `${vehicleName} • %`)
-        )); 
+      // 1. Bu ayın araçlarını (orderName prefix) tespit et ve TOPLU sil
+      const vehicleNames = targetMonth.orderCodes || [];
+      if (vehicleNames.length > 0) {
+        // SQL Parametre limitini aşmamak için 50'şerli gruplar halinde sil
+        const chunkSize = 50;
+        for (let i = 0; i < vehicleNames.length; i += chunkSize) {
+          const chunk = vehicleNames.slice(i, i + chunkSize);
+          const conditions = chunk.map((vn: string) => like(b2bOrders.orderName, `${vn} • %`));
+          
+          await db.delete(b2bOrders).where(and(
+            eq(b2bOrders.orgId, context.factoryId),
+            or(...conditions)
+          ));
+        }
       }
       
       // 2. Ayı listeden çıkar
