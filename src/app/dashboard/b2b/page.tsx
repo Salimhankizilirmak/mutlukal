@@ -2,9 +2,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Briefcase, Plus, FolderKanban, CheckCircle2, AlertCircle, Layers, Building2, Tag, Loader2, Upload, Search, Filter, Calendar, X } from 'lucide-react';
+import { Briefcase, Plus, FolderKanban, CheckCircle2, AlertCircle, Building2, Tag, Loader2, Upload, X, ChevronDown, ChevronRight, FileSpreadsheet } from 'lucide-react';
 import Link from 'next/link';
-import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder, importLocalHistoricalBatch, createImportedOrderBatchClient, deleteOrder, deleteAllOrders } from './actions';
+import * as XLSX from 'xlsx';
+import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder, importLocalHistoricalBatch, createImportedOrderBatchClient, deleteOrder, deleteAllOrders, getMonthlyMasterList, saveMonthlyMasterList } from './actions';
 
 export default function B2BDashboardPage() {
   const [partners, setPartners] = useState<Array<any>>([]);
@@ -12,6 +13,12 @@ export default function B2BDashboardPage() {
   const [brands, setBrands] = useState<Array<any>>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string>('');
   const [orders, setOrders] = useState<Array<any>>([]);
+  
+  // Monthly Master Configuration States
+  const [monthlyMasterList, setMonthlyMasterList] = useState<any>({ months: [] });
+  const [selectedMonthId, setSelectedMonthId] = useState<string>('');
+  const [expandedVehicles, setExpandedVehicles] = useState<Record<string, boolean>>({});
+
   
   // Modals / State
   const [loading, setLoading] = useState(true);
@@ -27,10 +34,6 @@ export default function B2BDashboardPage() {
   const [batchSuccess, setBatchSuccess] = useState('');
   const [clientScanProgress, setClientScanProgress] = useState('');
 
-  // Search & Filter States
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterMonth, setFilterMonth] = useState('');
-  const [filterOrderPrefix, setFilterOrderPrefix] = useState('');
   const [showCreationModal, setShowCreationModal] = useState(false);
 
   const handleDeleteSingleOrder = async (e: React.MouseEvent, id: string) => {
@@ -291,6 +294,175 @@ export default function B2BDashboardPage() {
     }
   };
 
+  // ──────────────────────────────────────────────────────────────
+  // YENİ: Aylık Ana Sipariş Listesi (Master Excel) Yükleme ve Ayrıştırma Motoru
+  // ──────────────────────────────────────────────────────────────
+  const handleMonthlyExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedPartnerId) return;
+
+    setImportingBatch(true);
+    setError('');
+    setBatchSuccess('');
+    setClientScanProgress(`${file.name} ayrıştırılıyor, aylık araç ve sipariş haritası çıkarılıyor...`);
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      
+      const sheetName = wb.SheetNames.find(s => s.toLowerCase().includes('sayfa1') || s.toLowerCase().includes('sheet1')) || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+
+      let lastVehicle = '';
+      let lastProdDate = '';
+      let lastSktDate = '';
+      let lastLoadingDate = '';
+
+      const items: any[] = [];
+
+      const parseExcelDate = (val: any) => {
+        if (!val) return '';
+        if (typeof val === 'number') {
+          const d = new Date((val - 25569) * 86400 * 1000);
+          const dd = String(d.getDate()).padStart(2, '0');
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const yyyy = d.getFullYear();
+          return `${dd}.${mm}.${yyyy}`;
+        }
+        return String(val).trim();
+      };
+
+      for (const row of rows) {
+        if (!row || row.length < 2) continue;
+        const rawVehicle = row[0] ? String(row[0]).trim() : '';
+        const rawOrder = row[1] ? String(row[1]).trim() : '';
+
+        if (rawVehicle.toLowerCase().includes('order') || rawOrder.toLowerCase().includes('number')) continue;
+        if (!rawOrder) continue;
+
+        if (rawVehicle && rawVehicle.startsWith('KB-')) {
+          lastVehicle = rawVehicle;
+        }
+
+        const pDate = parseExcelDate(row[14]);
+        if (pDate) lastProdDate = pDate;
+
+        const sDate = parseExcelDate(row[15]);
+        if (sDate) lastSktDate = sDate;
+
+        const lDate = parseExcelDate(row[5]);
+        if (lDate) lastLoadingDate = lDate;
+
+        items.push({
+          vehicleCode: lastVehicle || rawVehicle,
+          orderCode: rawOrder,
+          pallets: Number(row[2]) || 0,
+          boxes: Number(row[3]) || 0,
+          pcs: Number(row[4]) || 0,
+          loadingDate: lDate || lastLoadingDate,
+          productionDate: pDate || lastProdDate,
+          sktDate: sDate || lastSktDate,
+          destination: row[6] ? String(row[6]).trim() : '',
+          englishName: "Mutlukal Wheat Tortilla"
+        });
+      }
+
+      let monthTitle = "Mayıs 2026";
+      const upperName = file.name.toUpperCase();
+      if (upperName.includes('MAYIS')) monthTitle = "Mayıs 2026";
+      else if (upperName.includes('HAZİRAN') || upperName.includes('HAZIRAN')) monthTitle = "Haziran 2026";
+      else if (upperName.includes('NİSAN') || upperName.includes('NISAN')) monthTitle = "Nisan 2026";
+      else if (upperName.includes('TEMMUZ')) monthTitle = "Temmuz 2026";
+      else {
+        const custom = prompt('Lütfen yüklenen listenin Ay / Yıl başlığını girin:', 'Mayıs 2026');
+        if (custom) monthTitle = custom.trim();
+      }
+
+      const monthId = monthTitle.toLowerCase().replace(/\s+/g, '-');
+
+      const updatedMonths = [...(monthlyMasterList?.months || [])];
+      const existingIdx = updatedMonths.findIndex((m: any) => m.monthId === monthId);
+
+      const newMonthObj = {
+        monthId,
+        monthTitle,
+        partnerId: selectedPartnerId,
+        isCurrent: true,
+        items
+      };
+
+      updatedMonths.forEach((m: any) => { m.isCurrent = false; });
+
+      if (existingIdx >= 0) {
+        updatedMonths[existingIdx] = newMonthObj;
+      } else {
+        updatedMonths.push(newMonthObj);
+      }
+
+      await saveMonthlyMasterList({ months: updatedMonths });
+      await loadData();
+      setSelectedMonthId(monthId);
+      setBatchSuccess(`✔ Harika! ${monthTitle} listesi başarıyla ayrıştırıldı. Toplam ${items.length} iş emri araçlara atandı.`);
+    } catch (err: any) {
+      setError(err.message || 'Excel dosyası ayrıştırılamadı.');
+    } finally {
+      setImportingBatch(false);
+      setClientScanProgress('');
+      e.target.value = '';
+    }
+  };
+
+  // ──────────────────────────────────────────────────────────────
+  // YENİ: Otonom Tekil İş Dosyası Açma / Yükleme Motoru
+  // ──────────────────────────────────────────────────────────────
+  const handleSingleAutoJobUpload = async (file: File, presetVehicle?: string) => {
+    if (!selectedPartnerId) return alert('Lütfen önce Firma seçin.');
+    
+    setImportingBatch(true);
+    setError('');
+    setBatchSuccess('');
+    setClientScanProgress(`${file.name} yükleniyor, otomatik araç tespiti ve iş dosyası açılışı yapılıyor...`);
+
+    try {
+      const orderCode = file.name.split(',')[0].trim();
+      const curMonth = monthlyMasterList?.months?.find((m: any) => m.monthId === selectedMonthId);
+      let vehicleCode = presetVehicle || '';
+
+      if (!vehicleCode && curMonth?.items) {
+        const found = curMonth.items.find((it: any) => it.orderCode.toLowerCase() === orderCode.toLowerCase());
+        if (found?.vehicleCode) {
+          vehicleCode = found.vehicleCode;
+        }
+      }
+
+      if (!vehicleCode) {
+        const manual = prompt(`"${orderCode}" için araç kodu otomatik bulunamadı. Lütfen araç kodunu (örn: KB-006123) girin:`, 'KB-006123');
+        if (!manual) throw new Error('Araç kodu belirtilmediği için işlem iptal edildi.');
+        vehicleCode = manual.trim();
+      }
+
+      const uploadedUrl = await uploadFileDirectly(file, file.name);
+
+      await createImportedOrderBatchClient({
+        partnerId: selectedPartnerId,
+        brandId: selectedBrandId || undefined,
+        orderName: vehicleCode,
+        phase1FileUrl: uploadedUrl,
+        phase1FileName: file.name,
+        phase1AllFiles: JSON.stringify([file.name]),
+      });
+
+      await loadData();
+      setBatchSuccess(`✔ İş Dosyası Başarıyla Açıldı! "${orderCode}" siparişi otomatik olarak "${vehicleCode}" aracına bağlandı.`);
+    } catch (err: any) {
+      setError(err.message || 'İş dosyası açılırken hata oluştu.');
+    } finally {
+      setImportingBatch(false);
+      setClientScanProgress('');
+    }
+  };
+
 
   const loadBrands = useCallback(async (pId: string) => {
     try {
@@ -313,6 +485,14 @@ export default function B2BDashboardPage() {
       if (pList.length > 0) {
         setSelectedPartnerId(pList[0].id);
         loadBrands(pList[0].id);
+      }
+
+      // Load monthly master configuration
+      const mData = await getMonthlyMasterList();
+      setMonthlyMasterList(mData || { months: [] });
+      if (mData?.months && mData.months.length > 0) {
+        // preserve active month selection or default to current/last month
+        setSelectedMonthId(prev => prev || (mData.months.find((m: any) => m.isCurrent) || mData.months[mData.months.length - 1])?.monthId || '');
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Veriler yüklenemedi');
@@ -648,312 +828,284 @@ export default function B2BDashboardPage() {
         </div>
       )}
 
-      {/* Orders grid */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
-          <div className="flex items-center gap-2">
-            <Layers className="text-indigo-400" size={20} />
-            <h2 className="text-base font-bold text-white tracking-tight">Aktif Sipariş İş Akışları</h2>
-          </div>
-          <div className="flex items-center gap-3">
-            {orders.length > 0 && (
+      {/* ──────────────────────────────────────────────────────────────
+          AYLIK SİPARİŞ LİSTESİ (MASTER EXCEL) VE DİNAMİK AYLAR TAB TABLOSU
+          ────────────────────────────────────────────────────────────── */}
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-zinc-950/80 border border-zinc-800 rounded-3xl p-4 sm:p-5">
+          {/* Sol: Ay Seçici Sekmeler */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
+            <span className="text-[10px] uppercase font-extrabold text-zinc-500 tracking-wider px-2 shrink-0">AYLAR:</span>
+            {monthlyMasterList?.months?.map((m: any) => (
               <button
-                onClick={handlePurgeAllOrders}
-                disabled={importingBatch}
-                className="text-[11px] font-bold text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5"
-                title="Çalışma alanındaki tüm kayıtları temizle"
+                key={m.monthId}
+                onClick={() => setSelectedMonthId(m.monthId)}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all shrink-0 ${selectedMonthId === m.monthId ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/50' : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'}`}
               >
-                <span>🗑️ Tümünü Temizle</span>
+                {m.monthTitle}
               </button>
+            ))}
+
+            {(!monthlyMasterList?.months || monthlyMasterList.months.length === 0) && (
+              <span className="text-xs text-amber-500/80 italic px-2">Henüz aylık liste yüklenmedi. Sağdan yükleyin.</span>
             )}
-            <span className="text-xs text-zinc-500">{orders.length} sipariş akışı</span>
+          </div>
+
+          {/* Sağ: Yeni Ay Listesi (Excel) Yükleme Alanı */}
+          <div className="flex items-center gap-2 shrink-0 self-stretch md:self-auto justify-end">
+            <div className="relative flex-1 md:flex-initial">
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleMonthlyExcelUpload}
+                disabled={importingBatch || !selectedPartnerId}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
+              />
+              <div className={`flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black px-4 py-2 rounded-xl text-xs transition-all shadow-md ${importingBatch || !selectedPartnerId ? 'opacity-40' : ''}`}>
+                <FileSpreadsheet size={15} />
+                <span>📅 Yeni Ay Listesi (Excel) Yükle</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Filter & Search Toolbar */}
-        {orders.length > 0 && (
-          (() => {
-            // Derived unique filtering options
-            const availableMonths = Array.from(new Set(orders.map(o => {
-              try {
-                const d = new Date(o.order.createdAt);
-                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-              } catch {
-                return '';
-              }
-            }).filter(Boolean))).sort().reverse();
-
-            // Extract unique order prefix/codes from orderName
-            const availablePrefixes = Array.from(new Set(orders.flatMap(o => {
-              const name = o.order.orderName || '';
-              const m = name.match(/(?:KB|ZP\w|Z\d{9}|[A-Z]{2,3}-\d+)/g);
-              if (m && m.length > 0) return m;
-              const parts = name.split(/\s*-\s*|\s+/);
-              return parts.filter((p: string) => p.length > 2 && p.length < 15);
-            }).filter(Boolean))).sort();
-
-            return (
-              <div className="bg-zinc-950/60 border border-zinc-800/80 rounded-2xl p-3 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
-                {/* Text search bar */}
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={14} />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Sipariş adı, dosya, etiket veya notlarda arayın..."
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-zinc-200 outline-none focus:border-indigo-500/50 placeholder:text-zinc-600"
-                  />
-                  {searchQuery && (
-                    <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 hover:text-zinc-300 font-bold">
-                      Temizle
-                    </button>
-                  )}
-                </div>
-
-                {/* Dropdown Filters */}
-                <div className="flex items-center gap-2 shrink-0 overflow-x-auto pb-1 md:pb-0">
-                  {/* Month Filter */}
-                  <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-xl px-2.5 py-1.5">
-                    <Calendar className="text-zinc-500 shrink-0" size={12} />
-                    <span className="text-[10px] text-zinc-500 font-bold block shrink-0">Ay:</span>
-                    <select
-                      value={filterMonth}
-                      onChange={e => setFilterMonth(e.target.value)}
-                      className="bg-transparent text-xs text-zinc-300 outline-none cursor-pointer pr-1"
-                    >
-                      <option value="">Tüm Aylar</option>
-                      {availableMonths.map(m => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Order Code/Prefix Filter */}
-                  <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-xl px-2.5 py-1.5">
-                    <Filter className="text-zinc-500 shrink-0" size={12} />
-                    <span className="text-[10px] text-zinc-500 font-bold block shrink-0">Emir/Kod:</span>
-                    <select
-                      value={filterOrderPrefix}
-                      onChange={e => setFilterOrderPrefix(e.target.value)}
-                      className="bg-transparent text-xs text-zinc-300 outline-none cursor-pointer max-w-[120px] truncate"
-                    >
-                      <option value="">Tüm Emirler</option>
-                      {availablePrefixes.map(p => (
-                        <option key={p} value={p}>{p}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Reset Filters trigger */}
-                  {(filterMonth || filterOrderPrefix) && (
-                    <button
-                      onClick={() => { setFilterMonth(''); setFilterOrderPrefix(''); }}
-                      className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold px-2 py-1 shrink-0"
-                    >
-                      Sıfırla
-                    </button>
-                  )}
-                </div>
+        {/* Global Otonom Sürükle-Bırak İş Dosyası Açma Dropzone */}
+        {selectedMonthId && (
+          <div className="relative border-2 border-dashed border-indigo-500/30 hover:border-indigo-500/60 bg-gradient-to-b from-indigo-950/10 to-transparent rounded-3xl p-6 text-center transition-all group">
+            <input
+              type="file"
+              accept=".csv"
+              onChange={(e) => {
+                if (e.target.files?.[0]) handleSingleAutoJobUpload(e.target.files[0]);
+                e.target.value = '';
+              }}
+              disabled={importingBatch}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+            />
+            <div className="flex flex-col items-center justify-center gap-2 pointer-events-none">
+              <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-full group-hover:scale-110 transition-transform duration-300">
+                <Upload size={24} />
               </div>
-            );
-          })()
+              <h3 className="text-sm font-bold text-white tracking-tight">
+                ⚡ Otonom İş Dosyası Aç (Sürükle veya Seç)
+              </h3>
+              <p className="text-xs text-zinc-400 max-w-md">
+                Gelen bağımsız <span className="text-indigo-300 font-mono">.csv</span> sipariş dosyasını buraya sürükleyin. Sistem listeyi tarar, aracı bulur ve iş dosyasını otomatik başlatır.
+              </p>
+            </div>
+          </div>
         )}
 
-        <div className="grid grid-cols-1 gap-5">
-          {(() => {
-            const filteredOrders = orders.filter(item => {
-              const { order, partnerName, brandName } = item;
-              
-              if (filterMonth) {
-                try {
-                  const d = new Date(order.createdAt);
-                  const mStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                  if (mStr !== filterMonth) return false;
-                } catch {
-                  return false;
-                }
-              }
+        {/* ──────────────────────────────────────────────────────────────
+            ARAÇLARA GÖRE GRUPLANMIŞ SİPARİŞ HİYERARŞİSİ
+            ────────────────────────────────────────────────────────────── */}
+        {(() => {
+          const curMonth = monthlyMasterList?.months?.find((m: any) => m.monthId === selectedMonthId);
+          if (!curMonth) return null;
 
-              if (filterOrderPrefix) {
-                const allText = `${order.orderName || ''} ${order.phase1AllFiles || ''} ${order.phase2AllFiles || ''} ${order.phase3AllFiles || ''} ${order.phase4AllFiles || ''}`.toLowerCase();
-                if (!allText.includes(filterOrderPrefix.toLowerCase())) return false;
-              }
+          const items = curMonth.items || [];
+          const vehicles = Array.from(new Set(items.map((it: any) => String(it.vehicleCode || '')))).filter(Boolean) as string[];
 
-              if (searchQuery.trim()) {
-                const q = searchQuery.toLowerCase().trim();
-                const matchText = `${order.orderName || ''} ${partnerName || ''} ${brandName || ''} ${order.phase1AllFiles || ''} ${order.phase2AllFiles || ''} ${order.phase3AllFiles || ''} ${order.phase4AllFiles || ''} ${order.phase1Note || ''} ${order.phase2Note || ''} ${order.phase3Note || ''} ${order.phase4Note || ''}`.toLowerCase();
-                if (!matchText.includes(q)) return false;
-              }
-
-              return true;
-            });
-
-            // Gelişmiş Kullanıcı Dostu Sıralama: Tamamlananlar en alta, devam eden işler en üste
-            const sortedOrders = [...filteredOrders].sort((a, b) => {
-              const aDone = a.order.status === 'Tamamlandı' || !!a.order.phase4FileUrl;
-              const bDone = b.order.status === 'Tamamlandı' || !!b.order.phase4FileUrl;
-              if (aDone && !bDone) return 1;
-              if (!aDone && bDone) return -1;
-              return new Date(b.order.createdAt).getTime() - new Date(a.order.createdAt).getTime();
-            });
-
-            if (sortedOrders.length === 0 && orders.length > 0) {
-              return (
-                <div className="col-span-full py-8 text-center text-zinc-500 text-xs italic">
-                  Arama ve filtreleme kriterlerinize uygun sipariş iş akışı bulunamadı.
-                </div>
-              );
-            }
-
-            return sortedOrders.map(({ order, partnerName, brandName }) => {
-              const isFullyDone = order.status === 'Tamamlandı' || !!order.phase4FileUrl;
-              return (
-                <div
-                  key={order.id}
-                  className={`bg-zinc-950/90 border ${isFullyDone ? 'border-zinc-800/60 opacity-80' : 'border-indigo-500/40 shadow-xl shadow-indigo-950/20'} rounded-3xl p-5 sm:p-6 transition-all duration-300 block space-y-4`}
+          return (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                  🚚 {curMonth.monthTitle} — Araç Bazlı Sevkiyat Planı ({vehicles.length} Araç)
+                </span>
+                <button
+                  onClick={handlePurgeAllOrders}
+                  className="text-[10px] text-rose-400 hover:text-rose-300 transition-colors"
                 >
-                  {/* Üst Başlık ve Firma Tanımı */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-900 pb-4">
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="bg-zinc-900 text-indigo-400 font-extrabold px-3 py-1 rounded-xl text-xs border border-zinc-800">
-                          🏢 {partnerName}
+                  Çalışma Alanını Temizle
+                </button>
+              </div>
+
+              {vehicles.map((vCode: string) => {
+                const vItems = items.filter((it: any) => it.vehicleCode === vCode);
+                const isExpanded = expandedVehicles[vCode] ?? true;
+                
+                const tPallets = vItems.reduce((acc: number, it: any) => acc + (it.pallets || 0), 0);
+                const tBoxes = vItems.reduce((acc: number, it: any) => acc + (it.boxes || 0), 0);
+                const tPcs = vItems.reduce((acc: number, it: any) => acc + (it.pcs || 0), 0);
+                const firstDest = vItems.find((it: any) => it.destination)?.destination || '';
+                const lDate = vItems.find((it: any) => it.loadingDate)?.loadingDate || '';
+
+                return (
+                  <div key={vCode} className="bg-zinc-950 border border-zinc-800/80 rounded-3xl overflow-hidden transition-all shadow-xl shadow-black/40">
+                    <div
+                      onClick={() => setExpandedVehicles({ ...expandedVehicles, [vCode]: !isExpanded })}
+                      className="bg-gradient-to-r from-zinc-900 via-zinc-900/60 to-zinc-900 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer select-none group border-b border-zinc-800/50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-black flex items-center justify-center text-sm group-hover:scale-105 transition-transform shrink-0">
+                          🚗
                         </span>
-                        {brandName && (
-                          <span className="bg-purple-950/40 text-purple-300 font-bold px-3 py-1 rounded-xl text-xs border border-purple-900/40">
-                            🏷️ {brandName}
-                          </span>
-                        )}
-                        {isFullyDone ? (
-                          <span className="bg-emerald-500/10 text-emerald-400 font-bold px-2.5 py-0.5 rounded text-xs border border-emerald-500/20">
-                            ✓ İşlem Bitti
-                          </span>
-                        ) : (
-                          <span className="bg-amber-500/10 text-amber-400 font-bold px-2.5 py-0.5 rounded text-xs border border-amber-500/20 animate-pulse">
-                            ⏳ İşlemde
-                          </span>
-                        )}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-base font-black text-white group-hover:text-indigo-300 transition-colors tracking-tight">
+                              {vCode}
+                            </h3>
+                            <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">
+                              {vItems.length} İş
+                            </span>
+                            {lDate && (
+                              <span className="bg-amber-500/10 text-amber-400 font-bold px-2 py-0.5 rounded text-[10px]">
+                                📅 {lDate}
+                              </span>
+                            )}
+                          </div>
+                          {firstDest && (
+                            <p className="text-xs text-zinc-400 max-w-md truncate mt-0.5" title={firstDest}>
+                              📍 {firstDest}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <h3 className="text-lg font-black text-white mt-2.5 break-words tracking-tight">
-                        {order.orderName}
-                      </h3>
-                    </div>
-                    <span className="text-xs text-zinc-500 shrink-0 sm:self-start mt-1 sm:mt-0 font-medium">
-                      Oluşturulma: {new Date(order.createdAt).toLocaleDateString('tr-TR')}
-                    </span>
-                  </div>
 
-                  {/* Basit ve Herkesin Anlayacağı Dosyalar Listesi */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
-                    
-                    {/* Aşama 1 */}
-                    <div className="p-3.5 rounded-2xl bg-zinc-900/50 border border-zinc-800/80 space-y-2">
-                      <p className="text-xs font-black text-emerald-400">1. Aşama: Gelen Sipariş Dosyası (CSV)</p>
-                      {order.phase1AllFiles ? (
-                        <div className="space-y-1.5 pt-1 max-h-40 overflow-y-auto pr-1">
-                          {JSON.parse(order.phase1AllFiles).map((fn: string) => (
-                            <div key={fn} className="font-mono text-zinc-300 bg-zinc-950 px-2.5 py-1.5 rounded-xl border border-zinc-900 text-xs flex items-center justify-between gap-2">
-                              <span className="truncate">📄 {fn}</span>
-                              <span className="text-[10px] text-emerald-500 font-bold shrink-0 bg-emerald-500/10 px-1.5 py-0.5 rounded">Yüklendi</span>
+                      <div className="flex items-center gap-4 self-end sm:self-center shrink-0">
+                        <div className="flex items-center gap-3 bg-zinc-950/80 border border-zinc-800/80 px-3 py-1.5 rounded-xl text-xs">
+                          <span title="Palet">🛢️ <strong className="text-white font-black">{tPallets}</strong></span>
+                          <span className="text-zinc-700">|</span>
+                          <span title="Koli">📦 <strong className="text-white font-black">{tBoxes}</strong></span>
+                          <span className="text-zinc-700">|</span>
+                          <span title="Adet">🍕 <strong className="text-emerald-400 font-black">{tPcs}</strong></span>
+                        </div>
+
+                        <div className="relative" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="file"
+                            accept=".csv"
+                            onChange={(e) => {
+                              if (e.target.files?.[0]) handleSingleAutoJobUpload(e.target.files[0], vCode);
+                              e.target.value = '';
+                            }}
+                            disabled={importingBatch}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                            title="Bu araca yeni bir iş dosyası yükle"
+                          />
+                          <button className="p-2 bg-zinc-800 hover:bg-indigo-600 text-zinc-400 hover:text-white rounded-xl transition-colors shrink-0">
+                            <Plus size={16} />
+                          </button>
+                        </div>
+
+                        <div className="text-zinc-500 group-hover:text-white transition-colors shrink-0">
+                          {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                        </div>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="p-4 sm:p-5 space-y-4 bg-zinc-950/40">
+                        {vItems.map((item: any, idx: number) => {
+                          const dbRecordObj = orders.find(o => {
+                            const matchV = o.order.orderName === vCode || o.order.orderName?.includes(item.orderCode);
+                            const matchC = o.order.phase1Note === item.orderCode || 
+                              (o.order.phase1FileName && o.order.phase1FileName.toLowerCase().startsWith(item.orderCode.toLowerCase()));
+                            return matchV && matchC;
+                          });
+
+                          const dbOrder = dbRecordObj?.order;
+                          const isFullyDone = dbOrder && (dbOrder.status === 'Tamamlandı' || !!dbOrder.phase4FileUrl);
+
+                          return (
+                            <div
+                              key={item.orderCode || idx}
+                              className={`p-4 rounded-2xl border transition-all ${dbOrder ? (isFullyDone ? 'bg-zinc-900/30 border-zinc-800/80' : 'bg-zinc-900/80 border-indigo-500/40 shadow-lg shadow-indigo-950/20') : 'bg-zinc-950/90 border-zinc-900 border-dashed hover:border-zinc-700'}`}
+                            >
+                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-mono font-bold text-indigo-300 bg-indigo-950/60 px-2.5 py-0.5 rounded-lg border border-indigo-500/20">
+                                      🔑 {item.orderCode}
+                                    </span>
+                                    {dbOrder ? (
+                                      isFullyDone ? (
+                                        <span className="bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded text-[10px]">
+                                          ✓ İşlem Bitti
+                                        </span>
+                                      ) : (
+                                        <span className="bg-amber-500/10 text-amber-400 font-bold px-2 py-0.5 rounded text-[10px] animate-pulse">
+                                          ⏳ İşlemde
+                                        </span>
+                                      )
+                                    ) : (
+                                      <span className="bg-zinc-900 text-zinc-500 font-bold px-2 py-0.5 rounded text-[10px]">
+                                        📥 Dosya Bekliyor
+                                      </span>
+                                    )}
+                                  </div>
+                                  
+                                  <div className="flex items-center gap-3 text-[11px] text-zinc-400 pt-0.5 flex-wrap">
+                                    <span>Hedef: <strong className="text-zinc-200">{item.pcs} adet</strong></span>
+                                    <span>•</span>
+                                    <span>Koli: <strong className="text-zinc-200">{item.boxes}</strong></span>
+                                    <span>•</span>
+                                    <span>Palet: <strong className="text-zinc-200">{item.pallets}</strong></span>
+                                    {item.productionDate && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="text-zinc-500">Üretim/SKT: <strong className="text-zinc-300">{item.productionDate} - {item.sktDate}</strong></span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 self-end md:self-auto shrink-0">
+                                  {dbOrder ? (
+                                    <>
+                                      <div className="flex items-center gap-1 bg-zinc-950 px-2 py-1 rounded-xl border border-zinc-800 text-[10px]">
+                                        <span className={dbOrder.phase1FileUrl ? 'text-emerald-400 font-bold' : 'text-zinc-600'} title="Aşama 1">1️⃣</span>
+                                        <span className={dbOrder.phase2FileUrl ? 'text-purple-400 font-bold' : 'text-zinc-600'} title="Aşama 2">2️⃣</span>
+                                        <span className={dbOrder.phase3FileUrl ? 'text-blue-400 font-bold' : 'text-zinc-600'} title="Aşama 3">3️⃣</span>
+                                        <span className={dbOrder.phase4FileUrl ? 'text-amber-400 font-bold' : 'text-zinc-600'} title="Aşama 4">4️⃣</span>
+                                      </div>
+
+                                      <button
+                                        onClick={(e) => handleDeleteSingleOrder(e, dbOrder.id)}
+                                        className="p-2 text-zinc-600 hover:text-rose-400 rounded-lg transition-colors"
+                                        title="Bu işin dosyasını kaldır"
+                                      >
+                                        <X size={14} />
+                                      </button>
+
+                                      <Link
+                                        href={`/dashboard/b2b/${dbOrder.id}`}
+                                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-4 py-2 rounded-xl text-xs transition-all flex items-center gap-1 shadow-md shadow-indigo-950/50"
+                                      >
+                                        <span>👉 Paneli Aç</span>
+                                      </Link>
+                                    </>
+                                  ) : (
+                                    <div className="relative">
+                                      <input
+                                        type="file"
+                                        accept=".csv"
+                                        onChange={(e) => {
+                                          if (e.target.files?.[0]) handleSingleAutoJobUpload(e.target.files[0], vCode);
+                                          e.target.value = '';
+                                        }}
+                                        disabled={importingBatch}
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                      />
+                                      <div className="flex items-center gap-1.5 bg-zinc-900 hover:bg-indigo-600 text-zinc-400 hover:text-white font-bold px-3 py-1.5 rounded-xl text-xs transition-all border border-zinc-800">
+                                        <Upload size={12} />
+                                        <span>Dosyayı Yükle & Başlat</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-zinc-600 text-xs italic pt-1">Henüz gelen sipariş dosyası aktarılmadı.</p>
-                      )}
-                    </div>
-
-                    {/* Aşama 2 */}
-                    <div className="p-3.5 rounded-2xl bg-zinc-900/50 border border-zinc-800/80 space-y-2">
-                      <p className="text-xs font-black text-purple-400">2. Aşama: Üretim Hattı / Makine Çıktıları</p>
-                      {order.phase2AllFiles ? (
-                        <div className="space-y-1.5 pt-1 max-h-40 overflow-y-auto pr-1">
-                          {(() => {
-                            const fArr: {name: string}[] = JSON.parse(order.phase2AllFiles);
-                            return fArr.map(fObj => (
-                              <div key={fObj.name} className="font-mono text-zinc-300 bg-zinc-950 px-2.5 py-1.5 rounded-xl border border-zinc-900 text-xs flex items-center justify-between gap-2">
-                                <span className="truncate">⚙️ {fObj.name.split(',')[0]}</span>
-                                <span className="text-[10px] text-purple-400 font-bold shrink-0 bg-purple-500/10 px-1.5 py-0.5 rounded">Eklendi</span>
-                              </div>
-                            ));
-                          })()}
-                        </div>
-                      ) : (
-                        <p className="text-zinc-600 text-xs italic pt-1">Hat makinesinden gelen kayıt bekleniyor.</p>
-                      )}
-                    </div>
-
-                    {/* Aşama 3 */}
-                    <div className="p-3.5 rounded-2xl bg-zinc-900/50 border border-zinc-800/80 space-y-2">
-                      <p className="text-xs font-black text-blue-400">3. Aşama: El Terminali Okuma Dosyaları</p>
-                      {order.phase3AllFiles ? (
-                        <div className="space-y-1.5 pt-1 max-h-40 overflow-y-auto pr-1">
-                          {(() => {
-                            const fArr: {name: string}[] = JSON.parse(order.phase3AllFiles);
-                            return fArr.map(fObj => (
-                              <div key={fObj.name} className="font-mono text-zinc-300 bg-zinc-950 px-2.5 py-1.5 rounded-xl border border-zinc-900 text-xs flex items-center justify-between gap-2">
-                                <span className="truncate">📱 {fObj.name.split(',')[0]}</span>
-                                <span className="text-[10px] text-blue-400 font-bold shrink-0 bg-blue-500/10 px-1.5 py-0.5 rounded">Eklendi</span>
-                              </div>
-                            ));
-                          })()}
-                        </div>
-                      ) : (
-                        <p className="text-zinc-600 text-xs italic pt-1">Terminal/cihaz verisi bekleniyor.</p>
-                      )}
-                    </div>
-
-                    {/* Aşama 4 */}
-                    <div className="p-3.5 rounded-2xl bg-zinc-900/50 border border-zinc-800/80 space-y-2">
-                      <p className="text-xs font-black text-amber-400">4. Aşama: Oluşturulan Nihai Rapor</p>
-                      {order.phase4AllFiles ? (
-                        <div className="space-y-1.5 pt-1 max-h-40 overflow-y-auto pr-1">
-                          {(() => {
-                            const fArr: {name: string}[] = JSON.parse(order.phase4AllFiles);
-                            return fArr.map(fObj => (
-                              <div key={fObj.name} className="font-mono text-zinc-300 bg-zinc-950 px-2.5 py-1.5 rounded-xl border border-zinc-900 text-xs flex items-center justify-between gap-2">
-                                <span className="truncate">📦 {fObj.name}</span>
-                                <span className="text-[10px] text-amber-400 font-bold shrink-0 bg-amber-500/10 px-1.5 py-0.5 rounded">Hazır</span>
-                              </div>
-                            ));
-                          })()}
-                        </div>
-                      ) : (
-                        <p className="text-zinc-600 text-xs italic pt-1">Henüz barkod eşleştirmesi ve nihai rapor üretilmedi.</p>
-                      )}
-                    </div>
-
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-
-                  {/* Operasyon ve Aksiyon Çubuğu */}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-zinc-900/80">
-                    <button
-                      onClick={(e) => handleDeleteSingleOrder(e, order.id)}
-                      className="text-zinc-500 hover:text-rose-400 font-bold text-xs text-left sm:text-center transition-colors py-1 outline-none"
-                      title="Bu iş akışını kalıcı olarak sil"
-                    >
-                      Siparişi Tamamen Sil
-                    </button>
-                    
-                    <Link
-                      href={`/dashboard/b2b/${order.id}`}
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-6 py-3.5 rounded-xl text-xs transition-all text-center shadow-lg shadow-indigo-950/50 hover:scale-[1.01]"
-                    >
-                      👉 Bu Siparişi Yönet & Dosyaları Önizle
-                    </Link>
-                  </div>
-                </div>
-              );
-            });
-        })()}
-
-          {orders.length === 0 && (
-            <div className="col-span-full py-12 text-center text-zinc-600 border border-dashed border-zinc-800 rounded-2xl text-xs">
-              Sistemde henüz aktif bir sipariş/klasör akışı bulunmuyor. Yukarıdan yeni bir iş akışı başlatın.
+                );
+              })}
             </div>
-          )}
-        </div>
+          );
+        })()}
       </div>
     </div>
   );

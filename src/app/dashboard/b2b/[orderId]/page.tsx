@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, CheckCircle2, Upload, RefreshCw, FileText, AlertCircle, Loader2, Sparkles, Eye, X, ChevronDown, Hash } from 'lucide-react';
 import Link from 'next/link';
 import * as XLSX from 'xlsx';
-import { getOrderById, updateOrderPhase, clearPhaseFile } from '../actions';
+import { getOrderById, updateOrderPhase, clearPhaseFile, getMonthlyMasterList } from '../actions';
 import { generateNextSSCC } from '@/lib/gs1';
 
 const cleanAndFormat = (val: string) => {
@@ -306,7 +306,32 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
 
       // 7. Save to Cloud & Download
       const finalCsvContent = '\ufeff' + finalLines.join('\r\n');
-      const targetDeliverableName = `${orderData.partnerName}_${orderData.brandName || 'Genel'}_Nihai_Rapor.csv`;
+      
+      const o = orderData?.order || {};
+      const currentOrderCode = o.phase1Note || (o.phase1FileName ? o.phase1FileName.split(',')[0].trim() : '');
+      
+      let targetItem: any = null;
+      try {
+        const mList = await getMonthlyMasterList();
+        if (mList?.months) {
+          for (const m of mList.months) {
+            const found = m.items?.find((it: any) => it.orderCode.toLowerCase() === currentOrderCode.toLowerCase());
+            if (found) { targetItem = found; break; }
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      const prodDate = targetItem?.productionDate || "06.05.2026";
+      const sktDate = targetItem?.sktDate || "06.11.2026";
+      const englishName = targetItem?.englishName || "Mutlukal Wheat Tortilla";
+      const targetQtyStr = `${reconcileTargetCount} шт.`;
+
+      const origParts = o.phase1FileName ? o.phase1FileName.replace(/\.csv$/i, '').split(',') : [];
+      const gtin = origParts[1] ? origParts[1].trim() : "08698829380698";
+
+      const targetDeliverableName = `${currentOrderCode || o.orderName}, ${gtin}, ${targetQtyStr},  ${englishName}, ${prodDate} ${sktDate}.csv`;
       
       const fileObj = new File([finalCsvContent], targetDeliverableName, { type: 'text/csv;charset=utf-8' });
       const cloudUrl = await uploadToCloud(fileObj, targetDeliverableName);

@@ -335,3 +335,26 @@ export async function updatePhaseNote(orderId: string, phase: 1 | 2 | 3 | 4, not
   await db.update(b2bOrders).set(updateData).where(eq(b2bOrders.id, orderId));
   revalidatePath(`/dashboard/b2b/${orderId}`);
 }
+
+const MASTER_FILE_PATH = path.join(process.cwd(), 'public', 'b2b-monthly-master.json');
+
+export async function getMonthlyMasterList() {
+  try {
+    if (fs.existsSync(MASTER_FILE_PATH)) {
+      const content = fs.readFileSync(MASTER_FILE_PATH, 'utf-8');
+      return JSON.parse(content);
+    }
+  } catch {
+    // ignore
+  }
+  return { months: [] };
+}
+
+export async function saveMonthlyMasterList(data: any) {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+
+  fs.writeFileSync(MASTER_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+  revalidatePath('/dashboard/b2b');
+  return { success: true };
+}
