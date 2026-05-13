@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, CheckCircle2, Upload, RefreshCw, AlertCircle, Loader2, Sparkles, Eye, X, ChevronDown, Hash } from 'lucide-react';
 import Link from 'next/link';
 import * as XLSX from 'xlsx';
-import { getOrderById, updateOrderPhase, clearPhaseFile, getMonthlyMasterList } from '../actions';
+import { getOrderById, updateOrderPhase, clearPhaseFile, getMonthlyMasterList, sendB2BReportEmail } from '../actions';
 import { generateNextSSCC } from '@/lib/gs1';
 
 const cleanAndFormat = (val: string) => {
@@ -430,8 +430,27 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       document.body.removeChild(a);
       URL.revokeObjectURL(downloadUrl);
 
+      // 8. Auto-Mail Automation
+      try {
+        const firstSSCC = finalLines[0].split('\t')[1];
+        const lastSSCC = finalLines[finalLines.length - 1].split('\t')[1];
+        const ssccRange = `${firstSSCC} - ${lastSSCC}`;
+        
+        await sendB2BReportEmail(params.orderId, cloudUrl, targetDeliverableName, {
+          vehicleCode: targetItem?.vehicleCode || o.orderName.split(' • ')[0],
+          orderCode: currentOrderCode,
+          ssccRange,
+          prodDate,
+          expDate: sktDate,
+          batchNo: targetItem?.batchNo || "Bilinmiyor"
+        });
+        setSuccess(`✔ Rapor Hazırlandı ve Mail Gönderildi! Alıcı: k.can@mutlukal.com.tr`);
+      } catch (mailErr: any) {
+        console.error('Auto-mail failed:', mailErr);
+        setSuccess(`✔ Rapor Hazırlandı ancak Mail Gönderilemedi: ${mailErr.message}`);
+      }
+
       await fetchOrder();
-      setSuccess(`✔ Rapor Başarıyla Hazırlandı! Toplam ${finalProds.length} ürüne koli kodları atandı, buluta yedeklendi ve indirildi.`);
     } catch (err: any) {
       setError(err.message);
     } finally {

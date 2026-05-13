@@ -8,6 +8,7 @@ import { getFactoryContext } from '@/lib/auth-context';
 import { revalidatePath } from 'next/cache';
 import fs from 'fs';
 import path from 'path';
+import { sendEmail } from '@/lib/mail';
 
 export async function getPartners() {
   const context = await getFactoryContext();
@@ -415,4 +416,55 @@ export async function deleteMonthFromList(monthId: string) {
   }
   
   revalidatePath('/dashboard/b2b');
+}
+
+export async function sendB2BReportEmail(orderId: string, reportUrl: string, fileName: string, subjectData: any) {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+
+  const { vehicleCode, orderCode, ssccRange, prodDate, expDate, batchNo } = subjectData;
+  
+  // Subject: Подтверждение заказа (чесни знак) - KB-006328/ ZPK-010320 - ZPL-012080 08.05.2026 - 08.11.2026 (26050825-2)
+  const subject = `Подтверждение заказа (чесни знак) - ${vehicleCode}/ ${orderCode} - ${ssccRange} ${prodDate} - ${expDate} (${batchNo})`;
+
+  // Fetch report content for attachment
+  const res = await fetch(reportUrl);
+  if (!res.ok) throw new Error('Rapor dosyası sunucudan indirilemedi.');
+  const buffer = Buffer.from(await res.arrayBuffer());
+
+  const html = `
+    <div style="font-family: sans-serif; line-height: 1.6; color: #333; max-width: 600px; border: 1px solid #eee; padding: 20px; border-radius: 10px;">
+      <h2 style="color: #059669; border-bottom: 2px solid #059669; padding-bottom: 10px;">B2B Lojistik Raporu Hazır</h2>
+      <p>Merhaba,</p>
+      <p><b>${vehicleCode}</b> araç kodlu ve <b>${orderCode}</b> sipariş kodlu sevkiyat için hazırlanan nihai GS1 raporu ekte sunulmuştur.</p>
+      
+      <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td style="padding: 5px 0; color: #666;">Araç No:</td><td style="font-weight: bold;">${vehicleCode}</td></tr>
+          <tr><td style="padding: 5px 0; color: #666;">Sipariş No:</td><td style="font-weight: bold;">${orderCode}</td></tr>
+          <tr><td style="padding: 5px 0; color: #666;">SSCC Aralığı:</td><td style="font-weight: bold; color: #2563eb;">${ssccRange}</td></tr>
+          <tr><td style="padding: 5px 0; color: #666;">Üretim Tarihi:</td><td style="font-weight: bold;">${prodDate}</td></tr>
+          <tr><td style="padding: 5px 0; color: #666;">Son Kullanma:</td><td style="font-weight: bold;">${expDate}</td></tr>
+          <tr><td style="padding: 5px 0; color: #666;">Parti No (Lot):</td><td style="font-weight: bold; color: #d97706;">${batchNo}</td></tr>
+        </table>
+      </div>
+
+      <p style="font-size: 12px; color: #999; margin-top: 30px; text-align: center; border-top: 1px solid #eee; pt: 10px;">
+        Bu mail <b>Lavaş Trace B2B Otomasyonu</b> tarafından otomatik olarak oluşturulmuştur.
+      </p>
+    </div>
+  `;
+
+  return await sendEmail({
+    to: 'k.can@mutlukal.com.tr',
+    cc: ['s.canidemir@mutlukal.com.tr', 'salimhankizil@gmail.com'],
+    subject,
+    html,
+    attachments: [
+      {
+        filename: fileName,
+        content: buffer,
+      }
+    ]
+  });
 }

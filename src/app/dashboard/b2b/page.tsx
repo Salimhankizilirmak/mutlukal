@@ -394,6 +394,7 @@ export default function B2BDashboardPage() {
           loadingDate: lDate || lastLoadingDate,
           productionDate: pDate || lastProdDate,
           sktDate: sDate || lastSktDate,
+          batchNo: row[7] ? String(row[7]).trim() : '',
           destination: row[6] ? String(row[6]).trim() : '',
           englishName: "Mutlukal Wheat Tortilla"
         });
