@@ -2,10 +2,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, CheckCircle2, Clock, Upload, Download, RefreshCw, FileText, AlertCircle, Loader2, Sparkles, Eye, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Upload, Download, RefreshCw, FileText, AlertCircle, Loader2, Sparkles, Eye, X } from 'lucide-react';
 import Link from 'next/link';
 import * as XLSX from 'xlsx';
-import { getOrderById, updateOrderPhase, clearPhaseFile, updatePhaseNote } from '../actions';
+import { getOrderById, updateOrderPhase, clearPhaseFile } from '../actions';
 import { generateNextSSCC } from '@/lib/gs1';
 
 const cleanAndFormat = (val: string) => {
@@ -34,23 +34,9 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
   const [customPhase1Name, setCustomPhase1Name] = useState('');
   const [phase1File, setPhase1File] = useState<File | null>(null);
 
-  // Phase 2 Custom filename state
-  const [customPhase2Name, setCustomPhase2Name] = useState('');
-  const [phase2File, setPhase2File] = useState<File | null>(null);
-
   // Phase 3 Custom filename state
   const [customPhase3Name, setCustomPhase3Name] = useState('');
   const [phase3File, setPhase3File] = useState<File | null>(null);
-
-  // Phase 4 Custom filename state
-  const [customPhase4Name, setCustomPhase4Name] = useState('');
-  const [phase4File, setPhase4File] = useState<File | null>(null);
-
-  // Notes state
-  const [phaseNotes, setPhaseNotes] = useState<{ [key: number]: string }>({
-    1: '', 2: '', 3: '', 4: ''
-  });
-  const [savingNotePhase, setSavingNotePhase] = useState<number | null>(null);
 
   // Global SSCC counter state tracker
   const [activeSSCC, setActiveSSCC] = useState<string>('');
@@ -71,16 +57,7 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       
       const o = res.order;
       setCustomPhase1Name(o.phase1FileName || `${res.partnerName}_${res.brandName || 'Genel'}_Gelen.csv`);
-      setCustomPhase2Name(o.phase2FileName || `${res.partnerName}_${res.brandName || 'Genel'}_Makine_Sablonu.xlsx`);
       setCustomPhase3Name(o.phase3FileName || `${res.partnerName}_${res.brandName || 'Genel'}_Cihazdan_Gelen.xlsx`);
-      setCustomPhase4Name(o.phase4FileName || `${res.partnerName}_${res.brandName || 'Genel'}_Rapor_Tamamlandi.csv`);
-
-      setPhaseNotes({
-        1: o.phase1Note || '',
-        2: o.phase2Note || '',
-        3: o.phase3Note || '',
-        4: o.phase4Note || ''
-      });
     } catch (err: any) {
       setError(err.message || 'Sipariş detayları okunamadı');
     } finally {
@@ -307,44 +284,6 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     }
   };
 
-  // Phase 2 Custom Upload Handler (Allows directly injecting template files)
-  const handlePhase2CustomSubmit = async () => {
-    if (!phase2File) return setError('Lütfen 2. Aşama için şablon dosyası seçin.');
-    setProcessingPhase(2);
-    setError('');
-    setSuccess('');
-    try {
-      const targetName = customPhase2Name.trim() || phase2File.name;
-      const url = await uploadToCloud(phase2File, targetName);
-      await updateOrderPhase(params.orderId, 2, url, targetName);
-      await fetchOrder();
-      setSuccess('Aşama 2 şablon dosyası başarıyla içeri aktarıldı ve buluta kaydedildi.');
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setProcessingPhase(null);
-    }
-  };
-
-  // Phase 4 Custom Upload Handler (Allows directly injecting report deliverables)
-  const handlePhase4CustomSubmit = async () => {
-    if (!phase4File) return setError('Lütfen 4. Aşama için rapor dosyası seçin.');
-    setProcessingPhase(4);
-    setError('');
-    setSuccess('');
-    try {
-      const targetName = customPhase4Name.trim() || phase4File.name;
-      const url = await uploadToCloud(phase4File, targetName);
-      await updateOrderPhase(params.orderId, 4, url, targetName);
-      await fetchOrder();
-      setSuccess('Aşama 4 rapor dosyası başarıyla buluta yüklendi.');
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setProcessingPhase(null);
-    }
-  };
-
   // Clear specific phase file
   const handleClearPhase = async (phaseNum: 1 | 2 | 3 | 4) => {
     if (confirm(`${phaseNum}. Aşama dosyasını ve bağlantısını kaldırmak istediğinize emin misiniz?`)) {
@@ -357,21 +296,6 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       } catch (err: any) {
         setError(err.message || 'Dosya temizlenemedi.');
       }
-    }
-  };
-
-  // Save specific phase note
-  const handleSaveNote = async (phaseNum: 1 | 2 | 3 | 4) => {
-    setSavingNotePhase(phaseNum);
-    setError('');
-    setSuccess('');
-    try {
-      await updatePhaseNote(params.orderId, phaseNum, phaseNotes[phaseNum] || '');
-      setSuccess(`✔ ${phaseNum}. Aşama notu başarıyla kaydedildi.`);
-    } catch (err: any) {
-      setError(err.message || 'Not kaydedilemedi.');
-    } finally {
-      setSavingNotePhase(null);
     }
   };
 
@@ -495,455 +419,234 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       {success && <div className="p-4 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-2xl text-xs font-bold flex items-center gap-2"><CheckCircle2 size={16} /><span>{success}</span></div>}
 
       {/* 4 Steps Interactive Pipeline */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Operatör Odaklı Sadeleştirilmiş İş Akışı Aşamaları */}
+      <div className="space-y-4">
         
-        {/* Phase 1 Card */}
-        <div className={`rounded-3xl p-5 border transition-all relative overflow-hidden ${o.phase1FileUrl ? 'bg-zinc-950/40 border-emerald-500/30' : 'bg-zinc-950/90 border-zinc-800 shadow-lg'}`}>
-          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
-            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-              <span className="w-5 h-5 rounded-full bg-emerald-500/10 flex items-center justify-center text-[10px]">1</span>
-              Gelen Dosya (CSV)
-            </span>
-            {o.phase1FileUrl ? <CheckCircle2 className="text-emerald-500" size={16} /> : <Clock className="text-zinc-600" size={16} />}
-          </div>
-
-          <div className="pt-4 space-y-4">
-            {o.phase1FileUrl ? (
-              <div className="p-3 bg-emerald-500/5 rounded-xl border border-emerald-500/10 space-y-2">
-                <div>
-                  <p className="text-[10px] text-zinc-500 font-bold uppercase">Yüklü Ana Bulut Dosyası</p>
-                  <div className="flex items-center justify-between gap-2 mt-0.5">
-                    <a href={o.phase1FileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-emerald-300 hover:underline block truncate">
-                      {o.phase1FileName}
-                    </a>
-                    <button
-                      onClick={() => handleOpenPreview(o.phase1FileUrl, o.phase1FileName)}
-                      title="İçeriği Excel / Notepad++ arayüzü ile anında görüntüleyin"
-                      className="shrink-0 flex items-center gap-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors outline-none"
-                    >
-                      <Eye size={12} /> Önizle
-                    </button>
-                  </div>
+        {/* 1. Aşama: Gelen CSV Dosyası */}
+        <div className={`p-5 rounded-2xl border transition-all ${o.phase1FileUrl ? 'bg-zinc-950/60 border-emerald-500/30' : 'bg-zinc-950 border-zinc-800/80'}`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 font-extrabold flex items-center justify-center text-xs shrink-0">
+                1
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-white">Gelen İlk Sipariş Verisi</h3>
+                  {o.phase1FileUrl ? (
+                    <span className="bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded text-[10px]">Yüklendi</span>
+                  ) : (
+                    <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">Eksik</span>
+                  )}
                 </div>
+                <p className="text-xs text-zinc-500 mt-0.5">Müşteriden / klasörden aktarılan temel CSV dosyası</p>
+              </div>
+            </div>
 
-                {o.phase1AllFiles && (
-                  <div className="pt-1.5 border-t border-emerald-500/10">
-                    <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1">Gruptaki Tüm Dosyalar</p>
-                    <div className="space-y-0.5 max-h-24 overflow-y-auto pr-1">
-                      {JSON.parse(o.phase1AllFiles).map((fn: string) => (
-                        <div key={fn} className="text-[10px] font-mono text-zinc-400 truncate">📄 {fn}</div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
+            {o.phase1FileUrl ? (
+              <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
+                <a href={o.phase1FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-emerald-300 hover:underline max-w-[200px] truncate" title={o.phase1FileName}>
+                  📄 {o.phase1FileName}
+                </a>
+                <button
+                  onClick={() => handleOpenPreview(o.phase1FileUrl, o.phase1FileName)}
+                  className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
+                >
+                  <Eye size={14} /> Önizle
+                </button>
                 <button
                   onClick={() => handleClearPhase(1)}
-                  className="text-[10px] text-rose-400 hover:text-rose-300 font-bold block pt-1 hover:underline outline-none"
+                  title="Yeniden Yükle"
+                  className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
                 >
-                  Dosyayı Temizle / Yeniden Yükle
+                  <X size={14} />
                 </button>
               </div>
             ) : (
-              <p className="text-[11px] text-zinc-500">Masaüstündeki mevcut isimlendirme yapınızı korumak için başlığı özelleştirebilirsiniz.</p>
-            )}
-
-            <div>
-              <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1">Dosya İsimlendirmesi</label>
-              <input
-                type="text"
-                value={customPhase1Name}
-                onChange={e => setCustomPhase1Name(e.target.value)}
-                placeholder="Dosya Adı..."
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none focus:border-emerald-500/50"
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1">Dosya Seçimi / Değişimi</label>
-              <input
-                type="file"
-                accept=".csv,.xlsx,.xls"
-                onChange={e => setPhase1File(e.target.files?.[0] || null)}
-                className="w-full text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-500/10 file:text-emerald-400 hover:file:bg-emerald-500/20 file:transition-colors"
-              />
-            </div>
-
-            <button
-              onClick={handlePhase1Submit}
-              disabled={processingPhase === 1 || !phase1File}
-              className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-white font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-md"
-            >
-              {processingPhase === 1 ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              <span>Buluta Yükle & Kaydet</span>
-            </button>
-
-            {/* Phase Note Area */}
-            <div className="pt-2 border-t border-zinc-800/60 space-y-1.5">
-              <label className="text-[10px] text-zinc-400 font-bold uppercase block">Operasyon Notu</label>
-              <textarea
-                value={phaseNotes[1]}
-                onChange={e => setPhaseNotes({ ...phaseNotes, 1: e.target.value })}
-                placeholder="Bu aşama için not ekleyin..."
-                rows={2}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-300 outline-none focus:border-emerald-500/40 resize-none"
-              />
-              <button
-                onClick={() => handleSaveNote(1)}
-                disabled={savingNotePhase === 1}
-                className="text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold px-2.5 py-1 rounded-lg transition-colors float-right"
-              >
-                {savingNotePhase === 1 ? 'Kaydediliyor...' : 'Notu Kaydet'}
-              </button>
-              <div className="clear-both"></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Phase 2 Card */}
-        <div className={`rounded-3xl p-5 border transition-all relative overflow-hidden ${o.phase2FileUrl ? 'bg-zinc-950/40 border-purple-500/30' : 'bg-zinc-950/90 border-zinc-800 shadow-lg'}`}>
-          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
-            <span className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
-              <span className="w-5 h-5 rounded-full bg-purple-500/10 flex items-center justify-center text-[10px]">2</span>
-              Makine Şablonu (Excel)
-            </span>
-            {o.phase2FileUrl ? <CheckCircle2 className="text-purple-500" size={16} /> : <Clock className="text-zinc-600" size={16} />}
-          </div>
-
-          <div className="pt-4 space-y-4">
-            {o.phase2FileUrl ? (
-              <div className="p-3 bg-purple-500/5 rounded-xl border border-purple-500/10 space-y-2">
-                <div>
-                  <p className="text-[10px] text-zinc-500 font-bold uppercase">Üretilen / Yüklenen Bulut Şablonu</p>
-                  <div className="flex items-center justify-between gap-2 mt-0.5">
-                    <a href={o.phase2FileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-purple-300 hover:underline block truncate">
-                      {o.phase2FileName}
-                    </a>
-                    <button
-                      onClick={() => handleOpenPreview(o.phase2FileUrl, o.phase2FileName)}
-                      title="İçeriği Excel / Notepad++ arayüzü ile anında görüntüleyin"
-                      className="shrink-0 flex items-center gap-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors outline-none"
-                    >
-                      <Eye size={12} /> Önizle
-                    </button>
-                  </div>
-                </div>
-
-                {o.phase2AllFiles && (
-                  <div className="pt-1.5 border-t border-purple-500/10">
-                    <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1">Tespit Edilen Tüm Parçalar</p>
-                    <div className="space-y-0.5 max-h-24 overflow-y-auto pr-1">
-                      {JSON.parse(o.phase2AllFiles).map((fObj: {name: string; size: number; isPart: boolean}) => (
-                        <div key={fObj.name} className="text-[10px] font-mono truncate flex items-center justify-between">
-                          <span className={fObj.isPart ? 'text-zinc-500' : 'text-purple-400 font-bold'}>📄 {fObj.name}</span>
-                          <span className="text-[9px] text-zinc-600">{(fObj.size / 1024).toFixed(0)}KB</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  onClick={() => handleClearPhase(2)}
-                  className="text-[10px] text-rose-400 hover:text-rose-300 font-bold block pt-1 hover:underline outline-none"
-                >
-                  Şablonu Temizle / Sıfırla
-                </button>
-              </div>
-            ) : (
-              <p className="text-[11px] text-zinc-500">1. Aşamadaki verileri ayrıştırarak makinenin okuyacağı standart <strong>Barkod</strong> sütunlu Excel dosyası oluşturur veya dışarıdan hazır şablon aktarabilirsiniz.</p>
-            )}
-
-            {/* Custom File Upload Option for Phase 2 */}
-            <div className="space-y-2.5 p-3 bg-zinc-950/60 rounded-2xl border border-zinc-900">
-              <p className="text-[10px] font-bold text-purple-400/80 uppercase">Alternatif: Manuel Şablon Yükleme</p>
-              <div>
-                <label className="text-[9px] text-zinc-500 font-bold uppercase block mb-0.5">Dosya Adı</label>
-                <input
-                  type="text"
-                  value={customPhase2Name}
-                  onChange={e => setCustomPhase2Name(e.target.value)}
-                  placeholder="Dosya Adı..."
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-200 outline-none focus:border-purple-500/50"
-                />
-              </div>
-              <div>
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  onChange={e => setPhase2File(e.target.files?.[0] || null)}
-                  className="w-full text-[11px] text-zinc-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-purple-500/10 file:text-purple-400 hover:file:bg-purple-500/20 file:transition-colors"
-                />
-              </div>
-              <button
-                onClick={handlePhase2CustomSubmit}
-                disabled={processingPhase === 2 || !phase2File}
-                className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-purple-300 font-bold py-1.5 rounded-lg text-[11px] transition-colors flex items-center justify-center gap-1.5"
-              >
-                {processingPhase === 2 ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                <span>Seçili Dosyayı İçeri Aktar</span>
-              </button>
-            </div>
-
-            <button
-              onClick={handlePhase2Generate}
-              disabled={processingPhase === 2 || !o.phase1FileUrl}
-              className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-30 text-white font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-md mt-2"
-            >
-              {processingPhase === 2 ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-              <span>{o.phase2FileUrl ? 'Şablonu Yeniden Otomatik Üret' : 'Otomatik Şablon Üret'}</span>
-            </button>
-
-            {/* Phase Note Area */}
-            <div className="pt-2 border-t border-zinc-800/60 space-y-1.5">
-              <label className="text-[10px] text-zinc-400 font-bold uppercase block">Operasyon Notu</label>
-              <textarea
-                value={phaseNotes[2]}
-                onChange={e => setPhaseNotes({ ...phaseNotes, 2: e.target.value })}
-                placeholder="Bu aşama için not ekleyin..."
-                rows={2}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-300 outline-none focus:border-purple-500/40 resize-none"
-              />
-              <button
-                onClick={() => handleSaveNote(2)}
-                disabled={savingNotePhase === 2}
-                className="text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold px-2.5 py-1 rounded-lg transition-colors float-right"
-              >
-                {savingNotePhase === 2 ? 'Kaydediliyor...' : 'Notu Kaydet'}
-              </button>
-              <div className="clear-both"></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Phase 3 Card */}
-        <div className={`rounded-3xl p-5 border transition-all relative overflow-hidden ${o.phase3FileUrl ? 'bg-zinc-950/40 border-blue-500/30' : 'bg-zinc-950/90 border-zinc-800 shadow-lg'}`}>
-          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
-            <span className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
-              <span className="w-5 h-5 rounded-full bg-blue-500/10 flex items-center justify-center text-[10px]">3</span>
-              Cihazdan Alınan Veri
-            </span>
-            {o.phase3FileUrl ? <CheckCircle2 className="text-blue-500" size={16} /> : <Clock className="text-zinc-600" size={16} />}
-          </div>
-
-          <div className="pt-4 space-y-4">
-            {o.phase3FileUrl ? (
-              <div className="p-3 bg-blue-500/5 rounded-xl border border-blue-500/10 space-y-2">
-                <div>
-                  <p className="text-[10px] text-zinc-500 font-bold uppercase">Yüklü Ana Üretim Sonucu</p>
-                  <div className="flex items-center justify-between gap-2 mt-0.5">
-                    <a href={o.phase3FileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-blue-300 hover:underline block truncate">
-                      {o.phase3FileName}
-                    </a>
-                    <button
-                      onClick={() => handleOpenPreview(o.phase3FileUrl, o.phase3FileName)}
-                      title="İçeriği Excel / Notepad++ arayüzü ile anında görüntüleyin"
-                      className="shrink-0 flex items-center gap-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors outline-none"
-                    >
-                      <Eye size={12} /> Önizle
-                    </button>
-                  </div>
-                </div>
-
-                {o.phase3AllFiles && (
-                  <div className="pt-1.5 border-t border-blue-500/10">
-                    <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1">Tespit Edilen Tüm Dosyalar</p>
-                    <div className="space-y-0.5 max-h-24 overflow-y-auto pr-1">
-                      {JSON.parse(o.phase3AllFiles).map((fObj: {name: string; size: number}) => (
-                        <div key={fObj.name} className="text-[10px] font-mono text-zinc-400 truncate flex items-center justify-between">
-                          <span>📄 {fObj.name}</span>
-                          <span className="text-[9px] text-zinc-600">{(fObj.size / 1024).toFixed(0)}KB</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  onClick={() => handleClearPhase(3)}
-                  className="text-[10px] text-rose-400 hover:text-rose-300 font-bold block pt-1 hover:underline outline-none"
-                >
-                  Sonucu Temizle / Değiştir
-                </button>
-              </div>
-            ) : (
-              <p className="text-[11px] text-zinc-500">Üretim bittikten sonra makineden aldığınız çıktı Excel/CSV dosyasını buraya yükleyin.</p>
-            )}
-
-            <div>
-              <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1">Dosya İsimlendirmesi</label>
-              <input
-                type="text"
-                value={customPhase3Name}
-                onChange={e => setCustomPhase3Name(e.target.value)}
-                placeholder="Dosya Adı..."
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none focus:border-blue-500/50"
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1">Çıktı Dosyası Seçimi / Değişimi</label>
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={e => setPhase3File(e.target.files?.[0] || null)}
-                className="w-full text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-500/10 file:text-blue-400 hover:file:bg-blue-500/20 file:transition-colors"
-              />
-            </div>
-
-            <button
-              onClick={handlePhase3Submit}
-              disabled={processingPhase === 3 || !phase3File}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-30 text-white font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-md"
-            >
-              {processingPhase === 3 ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              <span>Buluta Yükle</span>
-            </button>
-
-            {/* Phase Note Area */}
-            <div className="pt-2 border-t border-zinc-800/60 space-y-1.5">
-              <label className="text-[10px] text-zinc-400 font-bold uppercase block">Operasyon Notu</label>
-              <textarea
-                value={phaseNotes[3]}
-                onChange={e => setPhaseNotes({ ...phaseNotes, 3: e.target.value })}
-                placeholder="Bu aşama için not ekleyin..."
-                rows={2}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-300 outline-none focus:border-blue-500/40 resize-none"
-              />
-              <button
-                onClick={() => handleSaveNote(3)}
-                disabled={savingNotePhase === 3}
-                className="text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold px-2.5 py-1 rounded-lg transition-colors float-right"
-              >
-                {savingNotePhase === 3 ? 'Kaydediliyor...' : 'Notu Kaydet'}
-              </button>
-              <div className="clear-both"></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Phase 4 Card */}
-        <div className={`rounded-3xl p-5 border transition-all relative overflow-hidden ${o.phase4FileUrl ? 'bg-zinc-950/40 border-indigo-500/30' : 'bg-gradient-to-br from-zinc-950 via-indigo-950/20 to-zinc-950 border-indigo-500/40 shadow-xl'}`}>
-          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-xl pointer-events-none"></div>
-          
-          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
-            <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
-              <span className="w-5 h-5 rounded-full bg-indigo-500/10 flex items-center justify-center text-[10px]">4</span>
-              Nihai Rapor & Koli Atama
-            </span>
-            {o.phase4FileUrl ? <CheckCircle2 className="text-indigo-500" size={16} /> : <Clock className="text-zinc-600" size={16} />}
-          </div>
-
-          <div className="pt-4 space-y-4">
-            {o.phase4FileUrl ? (
-              <div className="p-3 bg-indigo-500/5 rounded-xl border border-indigo-500/10 space-y-2">
-                <div>
-                  <p className="text-[10px] text-zinc-500 font-bold uppercase">Tamamlanan / Yüklenen Bulut Raporu</p>
-                  <div className="flex items-center justify-between gap-2 mt-0.5">
-                    <a href={o.phase4FileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-300 hover:underline block truncate">
-                      {o.phase4FileName}
-                    </a>
-                    <button
-                      onClick={() => handleOpenPreview(o.phase4FileUrl, o.phase4FileName)}
-                      title="İçeriği Excel / Notepad++ arayüzü ile anında görüntüleyin"
-                      className="shrink-0 flex items-center gap-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors outline-none"
-                    >
-                      <Eye size={12} /> Önizle
-                    </button>
-                  </div>
-                </div>
-
-                {o.phase4AllFiles && (
-                  <div className="pt-1.5 border-t border-indigo-500/10">
-                    <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1">Tespit Edilen Tüm Raporlar</p>
-                    <div className="space-y-0.5 max-h-24 overflow-y-auto pr-1">
-                      {JSON.parse(o.phase4AllFiles).map((fObj: {name: string; size: number}) => (
-                        <div key={fObj.name} className="text-[10px] font-mono text-zinc-400 truncate flex items-center justify-between">
-                          <span>📄 {fObj.name}</span>
-                          <span className="text-[9px] text-zinc-600">{(fObj.size / 1024).toFixed(0)}KB</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  onClick={() => handleClearPhase(4)}
-                  className="text-[10px] text-rose-400 hover:text-rose-300 font-bold block pt-1 hover:underline outline-none"
-                >
-                  Raporu Temizle / Yeniden Yükle
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2 text-[11px] text-zinc-400">
-                <p>Mükerrer barkodları otomatik temizler ve belirlenen standart kurallara göre nihai CSV formatını oluşturur veya dışarıdan hazır nihai rapor yükleyebilirsiniz:</p>
-                <ul className="list-disc list-inside text-indigo-300/80 space-y-0.5 font-medium">
-                  <li>004 ile başlayan ardışık SSCC kodları</li>
-                  <li>Her 30 üründe bir yeni koli</li>
-                  <li>Palet katmanı hariç (Triton standardı)</li>
-                </ul>
-              </div>
-            )}
-
-            {/* Custom File Upload Option for Phase 4 */}
-            <div className="space-y-2.5 p-3 bg-zinc-950/60 rounded-2xl border border-zinc-900">
-              <p className="text-[10px] font-bold text-indigo-400/80 uppercase">Alternatif: Hazır Rapor Yükleme</p>
-              <div>
-                <label className="text-[9px] text-zinc-500 font-bold uppercase block mb-0.5">Dosya Adı</label>
-                <input
-                  type="text"
-                  value={customPhase4Name}
-                  onChange={e => setCustomPhase4Name(e.target.value)}
-                  placeholder="Dosya Adı..."
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-200 outline-none focus:border-indigo-500/50"
-                />
-              </div>
-              <div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <input
                   type="file"
                   accept=".csv,.xlsx,.xls"
-                  onChange={e => setPhase4File(e.target.files?.[0] || null)}
-                  className="w-full text-[11px] text-zinc-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-indigo-500/10 file:text-indigo-400 hover:file:bg-indigo-500/20 file:transition-colors"
+                  onChange={e => setPhase1File(e.target.files?.[0] || null)}
+                  className="text-xs text-zinc-400 file:mr-2 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-500/10 file:text-emerald-400 hover:file:bg-emerald-500/20 max-w-[220px]"
                 />
+                <button
+                  onClick={handlePhase1Submit}
+                  disabled={processingPhase === 1 || !phase1File}
+                  className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-white font-bold px-4 py-2 rounded-xl text-xs transition-all shrink-0 flex items-center gap-1.5"
+                >
+                  {processingPhase === 1 ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                  <span>Yükle</span>
+                </button>
               </div>
-              <button
-                onClick={handlePhase4CustomSubmit}
-                disabled={processingPhase === 4 || !phase4File}
-                className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-indigo-300 font-bold py-1.5 rounded-lg text-[11px] transition-colors flex items-center justify-center gap-1.5"
-              >
-                {processingPhase === 4 ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                <span>Seçili Dosyayı İçeri Aktar</span>
-              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 2. Aşama: Makine Şablonu */}
+        <div className={`p-5 rounded-2xl border transition-all ${o.phase2FileUrl ? 'bg-zinc-950/60 border-purple-500/30' : 'bg-zinc-950 border-zinc-800/80'}`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 font-extrabold flex items-center justify-center text-xs shrink-0">
+                2
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-white">Makine Hat Şablonu</h3>
+                  {o.phase2FileUrl ? (
+                    <span className="bg-purple-500/10 text-purple-400 font-bold px-2 py-0.5 rounded text-[10px]">Hazır</span>
+                  ) : (
+                    <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">Bekliyor</span>
+                  )}
+                </div>
+                <p className="text-xs text-zinc-500 mt-0.5">Hat cihazlarının okuyacağı standart temiz Excel şablonu</p>
+              </div>
             </div>
 
-            <button
-              onClick={handlePhase4Finalize}
-              disabled={processingPhase === 4 || (!o.phase3FileUrl && !o.phase1FileUrl)}
-              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-30 text-white font-bold py-4 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-950/40 mt-2"
-            >
-              {processingPhase === 4 ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-              <span>{o.phase4FileUrl ? 'Raporu Tekrar Üret ve İndir' : 'Koli Kodlarını Ata & Raporu İndir'}</span>
-            </button>
+            {o.phase2FileUrl ? (
+              <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
+                <a href={o.phase2FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-purple-300 hover:underline max-w-[200px] truncate" title={o.phase2FileName}>
+                  ⚙️ {o.phase2FileName}
+                </a>
+                <button
+                  onClick={() => handleOpenPreview(o.phase2FileUrl, o.phase2FileName)}
+                  className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
+                >
+                  <Eye size={14} /> Önizle
+                </button>
+                <button
+                  onClick={() => handleClearPhase(2)}
+                  title="Şablonu Sıfırla"
+                  className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePhase2Generate}
+                  disabled={processingPhase === 2 || !o.phase1FileUrl}
+                  className="bg-purple-600 hover:bg-purple-500 disabled:opacity-30 text-white font-bold px-5 py-2 rounded-xl text-xs transition-all flex items-center gap-2 shadow-md"
+                >
+                  {processingPhase === 2 ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                  <span>Şablonu Otomatik Üret</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
 
-            {/* Phase Note Area */}
-            <div className="pt-2 border-t border-zinc-800/60 space-y-1.5">
-              <label className="text-[10px] text-zinc-400 font-bold uppercase block">Operasyon Notu</label>
-              <textarea
-                value={phaseNotes[4]}
-                onChange={e => setPhaseNotes({ ...phaseNotes, 4: e.target.value })}
-                placeholder="Bu aşama için not ekleyin..."
-                rows={2}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-300 outline-none focus:border-indigo-500/40 resize-none"
-              />
-              <button
-                onClick={() => handleSaveNote(4)}
-                disabled={savingNotePhase === 4}
-                className="text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold px-2.5 py-1 rounded-lg transition-colors float-right"
-              >
-                {savingNotePhase === 4 ? 'Kaydediliyor...' : 'Notu Kaydet'}
-              </button>
-              <div className="clear-both"></div>
+        {/* 3. Aşama: Cihaz Sonucu */}
+        <div className={`p-5 rounded-2xl border transition-all ${o.phase3FileUrl ? 'bg-zinc-950/60 border-blue-500/30' : 'bg-zinc-950 border-zinc-800/80'}`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-400 font-extrabold flex items-center justify-center text-xs shrink-0">
+                3
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-white">Üretim Hattı Çıktısı</h3>
+                  {o.phase3FileUrl ? (
+                    <span className="bg-blue-500/10 text-blue-400 font-bold px-2 py-0.5 rounded text-[10px]">Yüklendi</span>
+                  ) : (
+                    <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">Bekliyor</span>
+                  )}
+                </div>
+                <p className="text-xs text-zinc-500 mt-0.5">Hat cihazından alınan işlenmiş karekod sonuç dosyası</p>
+              </div>
             </div>
+
+            {o.phase3FileUrl ? (
+              <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
+                <a href={o.phase3FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-blue-300 hover:underline max-w-[200px] truncate" title={o.phase3FileName}>
+                  📱 {o.phase3FileName}
+                </a>
+                <button
+                  onClick={() => handleOpenPreview(o.phase3FileUrl, o.phase3FileName)}
+                  className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
+                >
+                  <Eye size={14} /> Önizle
+                </button>
+                <button
+                  onClick={() => handleClearPhase(3)}
+                  title="Çıktıyı Temizle"
+                  className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={e => setPhase3File(e.target.files?.[0] || null)}
+                  className="text-xs text-zinc-400 file:mr-2 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-500/10 file:text-blue-400 hover:file:bg-blue-500/20 max-w-[220px]"
+                />
+                <button
+                  onClick={handlePhase3Submit}
+                  disabled={processingPhase === 3 || !phase3File}
+                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-30 text-white font-bold px-4 py-2 rounded-xl text-xs transition-all shrink-0 flex items-center gap-1.5"
+                >
+                  {processingPhase === 3 ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                  <span>Yükle</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 4. Aşama: Nihai Koli Raporu */}
+        <div className={`p-5 rounded-2xl border transition-all ${o.phase4FileUrl ? 'bg-zinc-950/60 border-indigo-500/30' : 'bg-gradient-to-r from-zinc-950 via-indigo-950/20 to-zinc-950 border-indigo-500/40'}`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-400 font-extrabold flex items-center justify-center text-xs shrink-0">
+                4
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-white">Nihai SSCC Koli Atama Raporu</h3>
+                  {o.phase4FileUrl ? (
+                    <span className="bg-indigo-500/10 text-indigo-400 font-bold px-2 py-0.5 rounded text-[10px]">Tamamlandı</span>
+                  ) : (
+                    <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">Bekliyor</span>
+                  )}
+                </div>
+                <p className="text-xs text-zinc-500 mt-0.5">Her 30 üründe bir ardışık SSCC koli kodlarının atandığı tam rapor</p>
+              </div>
+            </div>
+
+            {o.phase4FileUrl ? (
+              <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
+                <a href={o.phase4FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-indigo-300 hover:underline max-w-[200px] truncate" title={o.phase4FileName}>
+                  📦 {o.phase4FileName}
+                </a>
+                <button
+                  onClick={() => handleOpenPreview(o.phase4FileUrl, o.phase4FileName)}
+                  className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
+                >
+                  <Eye size={14} /> Önizle
+                </button>
+                <button
+                  onClick={() => handleClearPhase(4)}
+                  title="Raporu Sıfırla"
+                  className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePhase4Finalize}
+                  disabled={processingPhase === 4 || (!o.phase3FileUrl && !o.phase1FileUrl)}
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-30 text-white font-bold px-5 py-2 rounded-xl text-xs transition-all flex items-center gap-2 shadow-md"
+                >
+                  {processingPhase === 4 ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                  <span>Koli Kodlarını Ata & Üret</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

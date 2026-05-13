@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Briefcase, Plus, FolderKanban, CheckCircle2, AlertCircle, Layers, Building2, Tag, Loader2, Upload, Search, Filter, Calendar } from 'lucide-react';
+import { Briefcase, Plus, FolderKanban, CheckCircle2, AlertCircle, Layers, Building2, Tag, Loader2, Upload, Search, Filter, Calendar, X } from 'lucide-react';
 import Link from 'next/link';
 import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder, importLocalHistoricalBatch, createImportedOrderBatchClient, deleteOrder, deleteAllOrders } from './actions';
 
@@ -31,6 +31,7 @@ export default function B2BDashboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [filterOrderPrefix, setFilterOrderPrefix] = useState('');
+  const [showCreationModal, setShowCreationModal] = useState(false);
 
   const handleDeleteSingleOrder = async (e: React.MouseEvent, id: string) => {
     e.preventDefault();
@@ -385,8 +386,8 @@ export default function B2BDashboardPage() {
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
-      {/* Premium Header */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-950/40 via-purple-950/20 to-zinc-950 p-6 sm:p-8 border border-indigo-900/20 shadow-2xl">
+      {/* Premium Header & Aksiyon Çubuğu */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-950/40 via-purple-950/20 to-zinc-950 p-6 sm:p-8 border border-indigo-900/20 shadow-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="absolute -right-10 -top-10 w-40 h-40 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
         <div className="flex items-center gap-4">
           <div className="p-3.5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-lg shadow-indigo-500/20 text-white shrink-0">
@@ -399,11 +400,19 @@ export default function B2BDashboardPage() {
             <h1 className="text-xl sm:text-3xl font-extrabold text-white tracking-tight mt-1">
               B2B Sipariş ve Dosya Akışı
             </h1>
-            <p className="text-xs sm:text-sm text-zinc-400 mt-1 max-w-2xl">
-              Farklı firmalar (Triton, Germes, Samakat vb.) için karekod dosya süreçlerini 4 adımda tek tıkla standartlaştırın. Masaüstü klasör bağımlılığına son verin.
+            <p className="text-xs text-zinc-400 mt-1 max-w-xl">
+              Mevcut lojistik operasyonlarınızı ve yüklenen akışları bu panelden takip edebilirsiniz.
             </p>
           </div>
         </div>
+
+        <button
+          onClick={() => setShowCreationModal(true)}
+          className="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-6 py-3.5 rounded-2xl text-xs transition-all shadow-lg shadow-indigo-950/50 flex items-center gap-2 shrink-0 self-stretch sm:self-auto justify-center"
+        >
+          <Plus size={16} />
+          <span>Firma & Klasör Ekle</span>
+        </button>
       </div>
 
       {error && (
@@ -413,132 +422,6 @@ export default function B2BDashboardPage() {
         </div>
       )}
 
-      {/* Control Configuration area */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Partner Section */}
-        <div className="bg-zinc-950/60 border border-zinc-800/80 rounded-3xl p-5 space-y-4 shadow-xl">
-          <div className="flex items-center gap-2 text-xs font-bold text-indigo-400 uppercase tracking-wider">
-            <Building2 size={16} />
-            <span>1. Partner Firma Seçimi</span>
-          </div>
-
-          <div className="space-y-2">
-            {partners.map(p => (
-              <button
-                key={p.id}
-                onClick={() => handlePartnerChange(p.id)}
-                className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold transition-all border ${selectedPartnerId === p.id ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30' : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:border-zinc-700'}`}
-              >
-                <span>{p.name}</span>
-                {selectedPartnerId === p.id && <span className="w-2 h-2 rounded-full bg-indigo-500"></span>}
-              </button>
-            ))}
-          </div>
-
-          <form onSubmit={handleCreatePartner} className="pt-2 flex gap-2">
-            <input
-              type="text"
-              value={newPartnerName}
-              onChange={e => setNewPartnerName(e.target.value)}
-              placeholder="Yeni Firma Adı..."
-              className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none focus:border-indigo-500/50"
-            />
-            <button disabled={creating || !newPartnerName.trim()} type="submit" className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white p-2 rounded-xl shrink-0 transition-colors">
-              <Plus size={16} />
-            </button>
-          </form>
-        </div>
-
-        {/* Brands Section */}
-        <div className="bg-zinc-950/60 border border-zinc-800/80 rounded-3xl p-5 space-y-4 shadow-xl">
-          <div className="flex items-center gap-2 text-xs font-bold text-purple-400 uppercase tracking-wider">
-            <Tag size={16} />
-            <span>2. Marka / Ambalaj Tanımı</span>
-          </div>
-
-          {selectedPartnerId ? (
-            <div className="space-y-2">
-              {brands.map(b => (
-                <button
-                  key={b.id}
-                  onClick={() => setSelectedBrandId(b.id)}
-                  className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold transition-all border ${selectedBrandId === b.id ? 'bg-purple-500/10 text-purple-300 border-purple-500/30' : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:border-zinc-700'}`}
-                >
-                  <span>{b.name}</span>
-                  {selectedBrandId === b.id && <span className="w-2 h-2 rounded-full bg-purple-500"></span>}
-                </button>
-              ))}
-
-              {brands.length === 0 && (
-                <p className="text-[11px] text-zinc-500 text-center py-4">Henüz marka tanımlanmamış. Aşağıdan ekleyin.</p>
-              )}
-
-              <form onSubmit={handleCreateBrand} className="pt-2 flex gap-2">
-                <input
-                  type="text"
-                  value={newBrandName}
-                  onChange={e => setNewBrandName(e.target.value)}
-                  placeholder="Ambalaj Adı (Tortillas vb.)"
-                  className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none focus:border-purple-500/50"
-                />
-                <button disabled={creating || !newBrandName.trim()} type="submit" className="bg-purple-600 hover:bg-purple-500 disabled:opacity-30 text-white p-2 rounded-xl shrink-0 transition-colors">
-                  <Plus size={16} />
-                </button>
-              </form>
-            </div>
-          ) : (
-            <p className="text-xs text-zinc-600 text-center py-8">Lütfen önce sol taraftan partner seçin.</p>
-          )}
-        </div>
-
-        {/* Order/Job Creation Section */}
-        <div className="bg-gradient-to-br from-zinc-950 via-indigo-950/10 to-zinc-950 border border-indigo-500/20 rounded-3xl p-5 space-y-4 shadow-xl">
-          <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
-            <FolderKanban size={16} />
-            <span>3. Yeni İş Akışı Başlat</span>
-          </div>
-
-          {selectedPartnerId ? (
-            <form onSubmit={handleCreateOrder} className="space-y-4">
-              <div className="p-3 bg-zinc-900/50 rounded-xl space-y-1">
-                <p className="text-[10px] text-zinc-500 font-bold uppercase">Seçili Partner</p>
-                <p className="text-xs text-indigo-300 font-bold">{partners.find(p => p.id === selectedPartnerId)?.name}</p>
-                
-                {selectedBrandId && (
-                  <>
-                    <p className="text-[10px] text-zinc-500 font-bold uppercase mt-2">Seçili Ambalaj</p>
-                    <p className="text-xs text-purple-300 font-bold">{brands.find(b => b.id === selectedBrandId)?.name}</p>
-                  </>
-                )}
-              </div>
-
-              <div>
-                <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1">Sipariş/Klasör Adı</label>
-                <input
-                  type="text"
-                  value={newOrderName}
-                  onChange={e => setNewOrderName(e.target.value)}
-                  placeholder="Örn: Triton - Nisan 2026"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none focus:border-emerald-500/50"
-                />
-                <p className="text-[10px] text-zinc-500 mt-1">Dosyalarınız bu başlık altında 4 adıma ayrılacaktır.</p>
-              </div>
-
-              <button
-                disabled={creating || !newOrderName.trim()}
-                type="submit"
-                className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-lg shadow-emerald-950/30"
-              >
-                <Plus size={16} />
-                <span>İş Akışını Oluştur</span>
-              </button>
-            </form>
-          ) : (
-            <p className="text-xs text-zinc-600 text-center py-8">İş akışı başlatmak için partner seçimi zorunludur.</p>
-          )}
-        </div>
-      </div>
-
       {batchSuccess && (
         <div className="flex items-center gap-2 p-4 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-2xl text-xs font-bold">
           <CheckCircle2 size={16} />
@@ -546,69 +429,216 @@ export default function B2BDashboardPage() {
         </div>
       )}
 
-      {/* Historical Bulk Importer Card */}
-      <div className="bg-gradient-to-r from-amber-950/20 via-zinc-950 to-amber-950/10 border border-amber-500/20 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-40 h-40 bg-amber-500/5 rounded-full blur-2xl pointer-events-none"></div>
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="space-y-1 max-w-xl">
-            <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wider">
-              <Upload size={16} />
-              <span>Geçmiş Klasörleri Tek Tuşla İçe Aktar (Toplu Otomasyon)</span>
-            </div>
-            <p className="text-xs text-zinc-400">
-              Bilgisayarınızdaki mevcut yerel klasörleri tarayarak her bir alt klasörü/CSV dosyasını anında ayrı bir iş akışı olarak sisteme tanımlar. Tek tek yükleme zahmetinden kurtulun.
-            </p>
-          </div>
-
-          <div className="w-full md:w-auto flex flex-col gap-3 shrink-0 mt-4 md:mt-0">
-            {clientScanProgress && (
-              <div className="text-xs text-amber-300 font-bold bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-xl animate-pulse">
-                {clientScanProgress}
-              </div>
-            )}
-
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              {/* Yöntem A: Tarayıcı Doğrudan Seçim */}
-              <div className="flex-1 relative">
-                <input
-                  type="file"
-                  {...({ webkitdirectory: "", directory: "" } as any)}
-                  multiple
-                  onChange={handleClientFolderSelection}
-                  disabled={importingBatch || !selectedPartnerId}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
-                  id="nativeFolderPicker"
-                />
-                <div className={`w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-extrabold px-4 py-2.5 rounded-xl text-xs transition-all shadow-lg ${importingBatch || !selectedPartnerId ? 'opacity-40' : ''}`}>
-                  {importingBatch ? <Loader2 size={14} className="animate-spin text-zinc-950" /> : <Upload size={14} />}
-                  <span>📁 Tarayıcıdan Klasör Seç (Vercel / S3 Uyumlu)</span>
+      {/* MODAL: Firma, Ambalaj ve Dosya Yükleme Paneli */}
+      {showCreationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden relative">
+            
+            {/* Modal Başlığı */}
+            <div className="flex items-center justify-between p-5 border-b border-zinc-800/80 bg-zinc-900/40">
+              <div className="flex items-center gap-2">
+                <span className="p-2 bg-indigo-500/10 text-indigo-400 rounded-xl">
+                  <Building2 size={18} />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Firma & Dosya Akışı Ekleme Paneli</h3>
+                  <p className="text-[11px] text-zinc-500">Sisteme yeni firmalar, ambalaj tipleri veya toplu klasörler tanımlayın</p>
                 </div>
               </div>
-
-              {/* Yöntem B: Lokal Sunucu */}
-              <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-xl px-2 py-1">
-                <span className="text-[9px] font-bold text-zinc-500 uppercase block shrink-0">Lokal Yol:</span>
-                <input
-                  type="text"
-                  value={historicalPath}
-                  onChange={e => setHistoricalPath(e.target.value)}
-                  placeholder="Karekod İşlemleri/5-Triton - Mayıs"
-                  className="bg-transparent text-[10px] text-zinc-400 outline-none w-36 font-mono"
-                />
-                <button
-                  onClick={handleBulkHistoricalImport}
-                  disabled={importingBatch || !selectedPartnerId || !historicalPath.trim()}
-                  title="Lokal Sunucu Diskinden Yükle"
-                  className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-zinc-300 font-bold px-2 py-1 rounded-lg text-[10px] transition-colors"
-                >
-                  Aktar
-                </button>
-              </div>
+              <button
+                onClick={() => setShowCreationModal(false)}
+                className="p-2 text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 rounded-xl transition-colors outline-none"
+              >
+                <X size={16} />
+              </button>
             </div>
-            {!selectedPartnerId && <p className="text-[10px] text-amber-500/80 text-center">Klasör aktarımı için yukarıdan Partner Firma seçimi zorunludur.</p>}
+
+            {/* Modal İçeriği (Kaydırılabilir Alan) */}
+            <div className="p-5 overflow-y-auto space-y-6">
+              
+              {/* 1. ve 2. Aşama: Firma ve Ambalaj Tanımı */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                
+                {/* Partner Section */}
+                <div className="bg-zinc-900/30 border border-zinc-800/80 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-bold text-indigo-400 uppercase tracking-wider">
+                    <Building2 size={14} />
+                    <span>1. Partner Firma Seçimi</span>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                    {partners.map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => handlePartnerChange(p.id)}
+                        className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-bold transition-all border ${selectedPartnerId === p.id ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30' : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:border-zinc-700'}`}
+                      >
+                        <span>{p.name}</span>
+                        {selectedPartnerId === p.id && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>}
+                      </button>
+                    ))}
+                  </div>
+
+                  <form onSubmit={handleCreatePartner} className="pt-1 flex gap-2">
+                    <input
+                      type="text"
+                      value={newPartnerName}
+                      onChange={e => setNewPartnerName(e.target.value)}
+                      placeholder="Yeni Firma Adı..."
+                      className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-200 outline-none focus:border-indigo-500/50"
+                    />
+                    <button disabled={creating || !newPartnerName.trim()} type="submit" className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white p-1.5 rounded-xl shrink-0 transition-colors">
+                      <Plus size={14} />
+                    </button>
+                  </form>
+                </div>
+
+                {/* Brands Section */}
+                <div className="bg-zinc-900/30 border border-zinc-800/80 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-bold text-purple-400 uppercase tracking-wider">
+                    <Tag size={14} />
+                    <span>2. Marka / Ambalaj Tanımı</span>
+                  </div>
+
+                  {selectedPartnerId ? (
+                    <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                      {brands.map(b => (
+                        <button
+                          key={b.id}
+                          onClick={() => setSelectedBrandId(b.id)}
+                          className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-bold transition-all border ${selectedBrandId === b.id ? 'bg-purple-500/10 text-purple-300 border-purple-500/30' : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:border-zinc-700'}`}
+                        >
+                          <span>{b.name}</span>
+                          {selectedBrandId === b.id && <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>}
+                        </button>
+                      ))}
+
+                      {brands.length === 0 && (
+                        <p className="text-[11px] text-zinc-500 text-center py-2">Henüz marka tanımlanmamış. Aşağıdan ekleyin.</p>
+                      )}
+
+                      <form onSubmit={handleCreateBrand} className="pt-1 flex gap-2">
+                        <input
+                          type="text"
+                          value={newBrandName}
+                          onChange={e => setNewBrandName(e.target.value)}
+                          placeholder="Ambalaj Adı (Tortillas vb.)"
+                          className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-200 outline-none focus:border-purple-500/50"
+                        />
+                        <button disabled={creating || !newBrandName.trim()} type="submit" className="bg-purple-600 hover:bg-purple-500 disabled:opacity-30 text-white p-1.5 rounded-xl shrink-0 transition-colors">
+                          <Plus size={14} />
+                        </button>
+                      </form>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-zinc-600 text-center py-6">Lütfen önce partner seçin.</p>
+                  )}
+                </div>
+
+              </div>
+
+              {/* 3. Aşama: Yeni Tekil İş Akışı Başlat */}
+              <div className="bg-zinc-900/30 border border-zinc-800/80 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                  <FolderKanban size={14} />
+                  <span>3. Bağımsız Yeni Klasör/Akış Başlat</span>
+                </div>
+
+                {selectedPartnerId ? (
+                  <form onSubmit={handleCreateOrder} className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="text"
+                      value={newOrderName}
+                      onChange={e => setNewOrderName(e.target.value)}
+                      placeholder="Sipariş / Klasör Adı (Örn: Triton - Nisan 2026)"
+                      className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 outline-none focus:border-emerald-500/50"
+                    />
+                    <button
+                      disabled={creating || !newOrderName.trim()}
+                      type="submit"
+                      className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-white font-bold px-4 py-2 rounded-xl flex items-center justify-center gap-1.5 text-xs transition-all shrink-0"
+                    >
+                      <Plus size={14} />
+                      <span>Akışı Oluştur</span>
+                    </button>
+                  </form>
+                ) : (
+                  <p className="text-xs text-zinc-600 italic">İş akışı başlatmak için partner seçimi zorunludur.</p>
+                )}
+              </div>
+
+              {/* 4. Aşama: Toplu Otomasyon Tarayıcı Yükleyici */}
+              <div className="bg-gradient-to-r from-amber-950/20 via-zinc-950 to-amber-950/10 border border-amber-500/20 rounded-2xl p-4 space-y-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wider">
+                    <Upload size={14} />
+                    <span>Geçmiş Klasörleri Toplu Otonom İçe Aktar</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400">
+                    Bilgisayarınızdaki mevcut lojistik klasör hiyerarşisini seçin, sistem tüm alt dosyaları ayrı akışlar halinde otomatik eşleştirsin.
+                  </p>
+                </div>
+
+                {clientScanProgress && (
+                  <div className="text-[11px] text-amber-300 font-bold bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-xl animate-pulse">
+                    {clientScanProgress}
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                  {/* Tarayıcı Doğrudan Seçim */}
+                  <div className="flex-1 relative">
+                    <input
+                      type="file"
+                      {...({ webkitdirectory: "", directory: "" } as any)}
+                      multiple
+                      onChange={handleClientFolderSelection}
+                      disabled={importingBatch || !selectedPartnerId}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
+                    />
+                    <div className={`w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-extrabold px-4 py-2 rounded-xl text-xs transition-all ${importingBatch || !selectedPartnerId ? 'opacity-40' : ''}`}>
+                      {importingBatch ? <Loader2 size={14} className="animate-spin text-zinc-950" /> : <Upload size={14} />}
+                      <span>📁 Tüm Klasörü Tarayıcıdan Aktar</span>
+                    </div>
+                  </div>
+
+                  {/* Lokal Yol */}
+                  <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-xl px-2 py-1">
+                    <span className="text-[9px] font-bold text-zinc-500 uppercase block shrink-0">Lokal Yol:</span>
+                    <input
+                      type="text"
+                      value={historicalPath}
+                      onChange={e => setHistoricalPath(e.target.value)}
+                      placeholder="Karekod İşlemleri/5-Triton"
+                      className="bg-transparent text-[10px] text-zinc-400 outline-none w-32 font-mono"
+                    />
+                    <button
+                      onClick={handleBulkHistoricalImport}
+                      disabled={importingBatch || !selectedPartnerId || !historicalPath.trim()}
+                      className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-zinc-300 font-bold px-2 py-1 rounded-lg text-[10px] transition-colors"
+                    >
+                      Aktar
+                    </button>
+                  </div>
+                </div>
+                {!selectedPartnerId && <p className="text-[10px] text-amber-500/80">Aktarım için yukarıdan Partner Firma seçimi zorunludur.</p>}
+              </div>
+
+            </div>
+
+            {/* Modal Alt Çubuğu */}
+            <div className="p-4 border-t border-zinc-800/80 bg-zinc-900/20 flex justify-end">
+              <button
+                onClick={() => setShowCreationModal(false)}
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold px-5 py-2 rounded-xl text-xs transition-colors"
+              >
+                Kapat
+              </button>
+            </div>
+
           </div>
         </div>
-      </div>
+      )}
 
       {/* Orders grid */}
       <div className="space-y-4">
