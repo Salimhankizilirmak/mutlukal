@@ -20,6 +20,7 @@
     "formidable": "^3.5.4",
     "framer-motion": "^12.38.0",
     "html5-qrcode": "^2.3.8",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.14.0",
     "next": "14.2.35",
     "nodemailer": "^8.0.7",

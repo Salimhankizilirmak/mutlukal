@@ -8,6 +8,7 @@ import { getFactoryContext } from '@/lib/auth-context';
 import { revalidatePath } from 'next/cache';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { sendEmail } from '@/lib/mail';
 
 export async function getPartners() {
@@ -446,4 +447,71 @@ export async function sendB2BReportEmail(orderId: string, reportUrl: string, fil
       }
     ]
   });
+}
+
+export async function backupOrderToLocal(orderId: string) {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+
+  // 1. Sipariş verilerini al
+  const [result] = await db.select({
+    order: b2bOrders,
+    partnerName: b2bPartners.name,
+    brandName: b2bBrands.name,
+  })
+  .from(b2bOrders)
+  .innerJoin(b2bPartners, eq(b2bOrders.partnerId, b2bPartners.id))
+  .leftJoin(b2bBrands, eq(b2bOrders.brandId, b2bBrands.id))
+  .where(eq(b2bOrders.id, orderId));
+
+  if (!result) throw new Error('Sipariş bulunamadı');
+  const o = result.order;
+
+  // 2. Klasör Yapısını Hazırla
+  const desktopPath = path.join(os.homedir(), 'Desktop');
+  const archiveRoot = path.join(desktopPath, 'B2B_Arsiv');
+  
+  const parts = o.orderName.split(' • ');
+  const vehicle = (parts[0] || 'Diger_Arac').trim().replace(/[<>:"/\\|?*]/g, '_');
+  const orderSubName = (parts[1] || o.id).trim().replace(/[<>:"/\\|?*]/g, '_');
+  
+  const date = new Date(o.createdAt || new Date());
+  const monthName = date.toLocaleString('tr-TR', { month: 'long', year: 'numeric' });
+  
+  const targetDir = path.join(archiveRoot, monthName, vehicle, orderSubName);
+  
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  // 3. Dosyaları İndir ve Kaydet
+  const fileMap = [
+    { url: o.phase1FileUrl, name: `1-Firmadan_Gelen_${o.phase1FileName || 'input.csv'}` },
+    { url: o.phase2FileUrl, name: `2-Cihaza_Yuklenen_${o.phase2FileName || 'device_input.xlsx'}` },
+    { url: o.phase3FileUrl, name: `3-Cihazdan_Gelen_${o.phase3FileName || 'device_output.xlsx'}` },
+    { url: o.phase4FileUrl, name: `4-Nihai_Rapor_${o.phase4FileName || 'final_report.csv'}` },
+  ];
+
+  const downloaded: string[] = [];
+  for (const f of fileMap) {
+    if (f.url) {
+      try {
+        const res = await fetch(f.url);
+        if (res.ok) {
+          const buffer = Buffer.from(await res.arrayBuffer());
+          const safeFileName = f.name.replace(/[<>:"/\\|?*]/g, '_');
+          fs.writeFileSync(path.join(targetDir, safeFileName), buffer);
+          downloaded.push(safeFileName);
+        }
+      } catch (err) {
+        console.error(`Dosya yedekleme hatası (${f.name}):`, err);
+      }
+    }
+  }
+
+  return { 
+    success: true, 
+    path: targetDir, 
+    count: downloaded.length 
+  };
 }

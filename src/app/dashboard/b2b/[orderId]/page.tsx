@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, CheckCircle2, Upload, RefreshCw, AlertCircle, Loader2, Sparkles, Eye, X, ChevronDown, Hash } from 'lucide-react';
 import Link from 'next/link';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 import { getOrderById, updateOrderPhase, clearPhaseFile, getMonthlyMasterList, sendB2BReportEmail } from '../actions';
 import { generateNextSSCC } from '@/lib/gs1';
 
@@ -61,6 +62,7 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
   const [expandedPhase4, setExpandedPhase4] = useState(false);
   const [sendingMail, setSendingMail] = useState(false);
   const [mailSuccess, setMailSuccess] = useState(false);
+  const [downloadingArchive, setDownloadingArchive] = useState(false);
 
   // Phase 1 Custom filename state
   const [customPhase1Name, setCustomPhase1Name] = useState('');
@@ -494,6 +496,56 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     }
   };
 
+  const handleDownloadArchive = async () => {
+    const o = orderData?.order;
+    if (!o) return;
+    
+    setDownloadingArchive(true);
+    try {
+      const zip = new JSZip();
+      
+      const date = new Date(o.createdAt);
+      const monthName = date.toLocaleString('tr-TR', { month: 'long', year: 'numeric' });
+      const parts = o.orderName.split(' • ');
+      const vehicle = (parts[0] || 'Diger').trim();
+      const orderSubName = (parts[1] || o.id).trim();
+      
+      // Folder structure
+      const rootFolder = zip.folder(monthName);
+      const vehicleFolder = rootFolder!.folder(vehicle);
+      const orderFolder = vehicleFolder!.folder(orderSubName);
+      
+      const files = [
+        { url: o.phase1FileUrl, name: `1-Firmadan_Gelen_${o.phase1FileName || 'input.csv'}` },
+        { url: o.phase2FileUrl, name: `2-Cihaza_Yuklenen_${o.phase2FileName || 'device_input.xlsx'}` },
+        { url: o.phase3FileUrl, name: `3-Cihazdan_Gelen_${o.phase3FileName || 'device_output.xlsx'}` },
+        { url: o.phase4FileUrl, name: `4-Nihai_Rapor_${o.phase4FileName || 'final_report.csv'}` },
+      ];
+      
+      for (const file of files) {
+        if (file.url) {
+          const res = await fetch(file.url);
+          const blob = await res.blob();
+          orderFolder!.file(file.name, blob);
+        }
+      }
+      
+      const content = await zip.generateAsync({ type: 'blob' });
+      const downloadUrl = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `${vehicle}_${orderSubName}_Arsiv.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (err: any) {
+      setError(`Arşiv oluşturulamadı: ${err.message}`);
+    } finally {
+      setDownloadingArchive(false);
+    }
+  };
+
   // Clear specific phase file
   const handleClearPhase = async (phaseNum: 1 | 2 | 3 | 4) => {
     if (confirm(`${phaseNum}. Aşama dosyasını ve bağlantısını kaldırmak istediğinize emin misiniz?`)) {
@@ -624,12 +676,22 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
           <p className="text-xs text-zinc-500 mt-0.5">Oluşturulma: {new Date(o.createdAt).toLocaleDateString('tr-TR')} • Bulut Depolama Aktif</p>
         </div>
 
-        {/* Global Pipeline Step Banner */}
-        <div className="flex items-center gap-2 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 px-4 py-2.5 rounded-2xl">
-          <Sparkles className="text-indigo-400" size={18} />
-          <span className="text-xs font-bold text-indigo-200">
-            {o.status === 'completed' ? 'Tüm Süreç Tamamlandı' : 'İş Akışı Devam Ediyor'}
-          </span>
+        <div className="flex flex-col sm:flex-row items-end gap-3">
+          <button
+            onClick={handleDownloadArchive}
+            disabled={downloadingArchive}
+            className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 hover:border-zinc-700 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 shadow-xl"
+          >
+            {downloadingArchive ? <Loader2 size={16} className="animate-spin" /> : <Hash size={16} />}
+            <span>{downloadingArchive ? 'Arşiv Hazırlanıyor...' : 'Tüm Süreci Arşivle (ZIP)'}</span>
+          </button>
+
+          <div className="flex items-center gap-2 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 px-4 py-2.5 rounded-2xl">
+            <Sparkles className="text-indigo-400" size={18} />
+            <span className="text-xs font-bold text-indigo-200">
+              {o.status === 'completed' ? 'Tüm Süreç Tamamlandı' : 'İş Akışı Devam Ediyor'}
+            </span>
+          </div>
         </div>
       </div>
 
