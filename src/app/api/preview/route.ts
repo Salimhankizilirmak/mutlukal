@@ -10,11 +10,25 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'URL parametresi eksik' }, { status: 400 });
     }
 
-    let bodyData: any = null;
-    let filename = path.basename(urlParam.split('?')[0]);
+    // 1. Fully strip any potential single, double, or nested URL encoding layers to get the pure raw human-readable path
+    let rawDecoded = urlParam;
+    try {
+      let attempts = 0;
+      while (rawDecoded.includes('%') && attempts < 5) {
+        const nextDec = decodeURIComponent(rawDecoded);
+        if (nextDec === rawDecoded) break;
+        rawDecoded = nextDec;
+        attempts++;
+      }
+    } catch {
+      // Keep best-effort decoded state if malformed segments exist
+    }
 
-    // Decode any URI components safely to evaluate physical path
-    let relPath = decodeURIComponent(urlParam);
+    let bodyData: any = null;
+    let filename = path.basename(rawDecoded.split('?')[0]);
+
+    // Format relative path for native physical check
+    let relPath = rawDecoded;
     if (relPath.startsWith('/')) {
       relPath = relPath.substring(1);
     }
@@ -27,19 +41,33 @@ export async function GET(req: NextRequest) {
       bodyData = await fs.promises.readFile(fullPath);
       filename = path.basename(fullPath);
     } else {
-      // LAYER 2: Cloud HTTP Fetch Fallback (Guarantees support for Vercel Serverless/CDN storage routes and external Supabase buckets)
-      const isAbsolute = urlParam.startsWith('http://') || urlParam.startsWith('https://');
-      let fetchTarget = urlParam;
+      // LAYER 2: Cloud HTTP Fetch Fallback with Ultimate Retry Variations to Prevent Network Edge 404 Double-Encoding Drops
+      const isAbsolute = rawDecoded.startsWith('http://') || rawDecoded.startsWith('https://');
+      let cloudRes: Response | null = null;
 
-      if (!isAbsolute) {
-        // Ensure special path characters, spaces, and Cyrillic segments are encoded for network retrieval
-        const encodedPath = urlParam.split('/').map(segment => encodeURIComponent(segment)).join('/');
-        fetchTarget = new URL(encodedPath, req.nextUrl.origin).toString();
+      if (isAbsolute) {
+        cloudRes = await fetch(rawDecoded);
+      } else {
+        // Variation A: Clean single-encoded path segments (Standard for modern Next.js/Vercel static asset routing routers)
+        const singleEncodedPath = rawDecoded.split('/').map(segment => encodeURIComponent(segment)).join('/');
+        const targetA = new URL(singleEncodedPath, req.nextUrl.origin).toString();
+        cloudRes = await fetch(targetA);
+
+        // Variation B: Standard encodeURI preservation (Encodes spaces and Cyrillic but preserves friendly slashes and commas)
+        if (!cloudRes.ok && cloudRes.status === 404) {
+          const targetB = new URL(encodeURI(rawDecoded), req.nextUrl.origin).toString();
+          cloudRes = await fetch(targetB);
+        }
+
+        // Variation C: Raw literal path string fallback
+        if (!cloudRes.ok && cloudRes.status === 404) {
+          const targetC = new URL(rawDecoded, req.nextUrl.origin).toString();
+          cloudRes = await fetch(targetC);
+        }
       }
 
-      const cloudRes = await fetch(fetchTarget);
-      if (!cloudRes.ok) {
-        return NextResponse.json({ error: `Dosya sunucuda/bulutta bulunamadı (HTTP ${cloudRes.status}).` }, { status: 404 });
+      if (!cloudRes || !cloudRes.ok) {
+        return NextResponse.json({ error: `Dosya sunucuda/bulutta bulunamadı (HTTP ${cloudRes?.status || 404}).` }, { status: 404 });
       }
 
       bodyData = await cloudRes.arrayBuffer();
