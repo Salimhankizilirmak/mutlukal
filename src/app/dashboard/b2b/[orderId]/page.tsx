@@ -463,9 +463,11 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     setPreviewType(isXlsx ? 'xlsx' : 'csv');
 
     try {
-      // Direct file reading through backend API to bypass Next.js static routing bugs on Windows with Cyrillic/Turkish paths
-      const apiUrl = `/api/preview?url=${encodeURIComponent(url)}`;
-      const res = await fetch(apiUrl);
+      // If the URL is absolute (Supabase/S3), fetch directly to bypass Vercel 4.5MB body limit
+      const isAbsolute = url.startsWith('http');
+      const fetchUrl = isAbsolute ? url : `/api/preview?url=${encodeURIComponent(url)}`;
+      
+      const res = await fetch(fetchUrl);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Dosya okunamadı (HTTP ${res.status}).`);
@@ -507,7 +509,13 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
         }
       } else {
         const text = await res.text();
-        setPreviewContentCsv(text);
+        const lines = text.split(/\r\n|\r|\n/);
+        if (lines.length > 2000) {
+          const truncated = lines.slice(0, 2000).join('\n');
+          setPreviewContentCsv(`${truncated}\n\n... [DEVAMINI GÖRMEK İÇİN DOSYAYI İNDİRİN - TOPLAM ${lines.length} SATIR]`);
+        } else {
+          setPreviewContentCsv(text);
+        }
       }
     } catch (err: any) {
       console.error('Preview error:', err);
