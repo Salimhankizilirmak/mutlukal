@@ -75,6 +75,16 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       const o = res.order;
       setCustomPhase1Name(o.phase1FileName || `${res.partnerName}_${res.brandName || 'Genel'}_Gelen.csv`);
       setCustomPhase3Name(o.phase3FileName || `${res.partnerName}_${res.brandName || 'Genel'}_Cihazdan_Gelen.xlsx`);
+
+      // Auto-extract target count from Phase 1 filename if exists
+      if (o.phase1FileName) {
+        const parts = o.phase1FileName.split(',');
+        if (parts.length > 2) {
+          const qtyStr = parts[2].replace(' шт.', '').trim();
+          const qtyNum = parseInt(qtyStr);
+          if (!isNaN(qtyNum)) setReconcileTargetCount(qtyNum);
+        }
+      }
     } catch (err: any) {
       setError(err.message || 'Sipariş detayları okunamadı');
     } finally {
@@ -323,13 +333,37 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
         // ignore
       }
 
-      const prodDate = targetItem?.productionDate || "06.05.2026";
-      const sktDate = targetItem?.sktDate || "06.11.2026";
-      const englishName = targetItem?.englishName || "Mutlukal Wheat Tortilla";
-      const targetQtyStr = `${reconcileTargetCount} шт.`;
+      // Metadata Extraction from Phase 1 Filename (Smarter Fallback)
+      const origParts = o.phase1FileName ? o.phase1FileName.replace(/\.csv$/i, '').split(',').map(p => p.trim()) : [];
+      // parts pattern: [0: Code, 1: GTIN, 2: Qty шт., 3: Russian Name, 4: Date]
+      
+      const p1Gtin = origParts[1] || "08698829380698";
+      const p1QtyStr = origParts[2] || `${reconcileTargetCount} шт.`;
+      const p1Date = origParts[4] || "28.05.2026"; // Extract 28.05.2026 if possible
 
-      const origParts = o.phase1FileName ? o.phase1FileName.replace(/\.csv$/i, '').split(',') : [];
-      const gtin = origParts[1] ? origParts[1].trim() : "08698829380698";
+      const prodDate = targetItem?.productionDate || p1Date;
+      const sktDate = targetItem?.sktDate || (prodDate && prodDate.includes('.') ? (() => {
+        const parts = prodDate.split('.');
+        if (parts.length === 3) {
+          const year = parseInt(parts[2]);
+          const month = parseInt(parts[1]);
+          const day = parseInt(parts[0]);
+          // Add 6 months for SKT
+          let targetMonth = month + 6;
+          let targetYear = year;
+          if (targetMonth > 12) {
+            targetMonth -= 12;
+            targetYear += 1;
+          }
+          return `${String(day).padStart(2, '0')}.${String(targetMonth).padStart(2, '0')}.${targetYear}`;
+        }
+        return "06.11.2026";
+      })() : "06.11.2026");
+
+      const englishName = targetItem?.englishName || (orderData.brandName === 'Tortillas' ? "Mutlukal Wheat Tortilla" : "Mutlukal Brand Product");
+      const targetQtyStr = p1QtyStr.includes('шт') ? p1QtyStr : `${reconcileTargetCount} шт.`;
+
+      const gtin = p1Gtin;
 
       const targetDeliverableName = `${currentOrderCode || o.orderName}, ${gtin}, ${targetQtyStr},  ${englishName}, ${prodDate} ${sktDate}.csv`;
       
@@ -1081,6 +1115,76 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
         </div>
       )}
 
+      {/* ──────────────────────────────────────────────────────────────
+          MANUEL ARŞİV VE ESKİ KAYIT YÜKLEME (OPSİYONEL)
+          ────────────────────────────────────────────────────────────── */}
+      <div className="bg-zinc-950/60 border border-zinc-900 rounded-3xl p-6 sm:p-8 space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-zinc-900 rounded-xl text-zinc-400">
+            <RefreshCw size={20} />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-white tracking-tight">Eski Kayıt & Manuel Rapor Yükleme</h2>
+            <p className="text-xs text-zinc-500">Hazır raporlarınız veya geçmiş cihaz çıktılarınız varsa buradan doğrudan yükleyebilirsiniz.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Manuel Aşama 3 */}
+          <div className="p-5 rounded-2xl bg-zinc-900/30 border border-zinc-800 space-y-4">
+            <h3 className="text-xs font-black text-blue-400 uppercase tracking-widest">Aşama 3: Cihaz Çıktısı (XLSX/CSV)</h3>
+            <div className="relative group">
+              <input
+                type="file"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) {
+                    setProcessingPhase(3);
+                    uploadToCloud(f, f.name).then(url => {
+                      updateOrderPhase(params.orderId, 3, url, f.name).then(() => {
+                        fetchOrder().then(() => setProcessingPhase(null));
+                      });
+                    });
+                  }
+                }}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+              />
+              <div className="flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 py-3 rounded-xl text-xs font-bold transition-all border border-dashed border-zinc-700">
+                <Upload size={14} />
+                <span>Eski Cihaz Çıktısını Yükle</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Manuel Aşama 4 */}
+          <div className="p-5 rounded-2xl bg-zinc-900/30 border border-zinc-800 space-y-4">
+            <h3 className="text-xs font-black text-amber-400 uppercase tracking-widest">Aşama 4: Nihai Rapor (CSV)</h3>
+            <div className="relative group">
+              <input
+                type="file"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) {
+                    setProcessingPhase(4);
+                    uploadToCloud(f, f.name).then(url => {
+                      updateOrderPhase(params.orderId, 4, url, f.name).then(() => {
+                        fetchOrder().then(() => setProcessingPhase(null));
+                      });
+                    });
+                  }
+                }}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+              />
+              <div className="flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 py-3 rounded-xl text-xs font-bold transition-all border border-dashed border-zinc-700">
+                <Upload size={14} />
+                <span>Hazır Nihai Raporu Yükle</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="h-20" />
     </div>
   );
 }
