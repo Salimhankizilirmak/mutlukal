@@ -100,3 +100,11 @@ export const b2bOrders = sqliteTable('b2b_orders', {
   createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   updatedAt: integer('updatedAt', { mode: 'timestamp' }),
 });
+
+export const b2bSettings = sqliteTable('b2b_settings', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  orgId: text('org_id').notNull(),
+  key: text('key').notNull(), // e.g., 'monthly_master_list'
+  value: text('value'), // JSON string
+  updatedAt: integer('updatedAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+});

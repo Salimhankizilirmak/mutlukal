@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Briefcase, Plus, FolderKanban, CheckCircle2, AlertCircle, Building2, Tag, Loader2, Upload, X, ChevronDown, ChevronRight, FileSpreadsheet } from 'lucide-react';
+import { Briefcase, Plus, FolderKanban, CheckCircle2, AlertCircle, Building2, Tag, Loader2, Upload, X, ChevronDown, ChevronRight, FileText } from 'lucide-react';
 import Link from 'next/link';
 import * as XLSX from 'xlsx';
 import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder, importLocalHistoricalBatch, createImportedOrderBatchClient, deleteOrder, deleteAllOrders, getMonthlyMasterList, saveMonthlyMasterList } from './actions';
@@ -862,7 +862,7 @@ export default function B2BDashboardPage() {
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
               />
               <div className={`flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black px-4 py-2 rounded-xl text-xs transition-all shadow-md ${importingBatch || !selectedPartnerId ? 'opacity-40' : ''}`}>
-                <FileSpreadsheet size={15} />
+                <FileText size={15} />
                 <span>📅 Yeni Ay Listesi (Excel) Yükle</span>
               </div>
             </div>

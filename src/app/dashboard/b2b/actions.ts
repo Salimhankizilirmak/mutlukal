@@ -2,7 +2,7 @@
 'use server';
 
 import { db } from '@/db';
-import { b2bPartners, b2bBrands, b2bOrders } from '@/db/schema';
+import { b2bPartners, b2bBrands, b2bOrders, b2bSettings } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { getFactoryContext } from '@/lib/auth-context';
 import { revalidatePath } from 'next/cache';
@@ -336,25 +336,42 @@ export async function updatePhaseNote(orderId: string, phase: 1 | 2 | 3 | 4, not
   revalidatePath(`/dashboard/b2b/${orderId}`);
 }
 
-const MASTER_FILE_PATH = path.join(process.cwd(), 'public', 'b2b-monthly-master.json');
-
 export async function getMonthlyMasterList() {
   try {
-    if (fs.existsSync(MASTER_FILE_PATH)) {
-      const content = fs.readFileSync(MASTER_FILE_PATH, 'utf-8');
-      return JSON.parse(content);
+    const context = await getFactoryContext();
+    if (!context?.factoryId) return { months: [] };
+
+    const records = await db.select().from(b2bSettings).where(eq(b2bSettings.orgId, context.factoryId));
+    const found = records.find(r => r.key === 'monthly_master_list');
+    if (found && found.value) {
+      return JSON.parse(found.value);
     }
   } catch {
-    // ignore
+    // fallback gracefully
   }
   return { months: [] };
 }
 
 export async function saveMonthlyMasterList(data: any) {
   const context = await getFactoryContext();
-  if (!context.factoryId) throw new Error('Yetkisiz');
+  if (!context?.factoryId) throw new Error('Yetkisiz');
 
-  fs.writeFileSync(MASTER_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+  const jsonString = JSON.stringify(data);
+  const existing = await db.select().from(b2bSettings).where(eq(b2bSettings.orgId, context.factoryId));
+  const found = existing.find(r => r.key === 'monthly_master_list');
+
+  if (found) {
+    await db.update(b2bSettings)
+      .set({ value: jsonString, updatedAt: new Date() })
+      .where(eq(b2bSettings.id, found.id));
+  } else {
+    await db.insert(b2bSettings).values({
+      orgId: context.factoryId,
+      key: 'monthly_master_list',
+      value: jsonString,
+    });
+  }
+
   revalidatePath('/dashboard/b2b');
   return { success: true };
 }
