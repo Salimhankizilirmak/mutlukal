@@ -80,22 +80,23 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     fetchGlobalCounter();
   }, [fetchOrder, fetchGlobalCounter]);
 
-  // General Direct Cloud Upload Logic using Presigned URLs
+  // General Direct Cloud Upload Logic via Proxy Route (Bypasses S3 CORS blocks)
   const uploadToCloud = async (file: File, requestedFilename: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('filename', requestedFilename);
+
     const res = await fetch('/api/upload', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: requestedFilename, contentType: file.type || 'application/octet-stream' }),
+      body: formData,
     });
-    if (!res.ok) throw new Error('Cloud depolama bağlantısı kurulamadı.');
-    const { presignedUrl, publicUrl } = await res.json();
 
-    const uploadRes = await fetch(presignedUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type || 'application/octet-stream' },
-      body: file,
-    });
-    if (!uploadRes.ok) throw new Error('Dosya buluta yüklenirken hata oluştu.');
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Cloud depolama yüklemesi başarısız oldu.');
+    }
+
+    const { publicUrl } = await res.json();
     return publicUrl;
   };
 
