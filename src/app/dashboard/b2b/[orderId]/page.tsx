@@ -1020,7 +1020,7 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
                     {files4.map((fItem: any) => {
                       const fn = typeof fItem === 'string' ? fItem : fItem?.name;
                       if (!fn) return null;
-                      const subUrl = fn === o.phase4FileName ? o.phase4FileUrl : `/b2b-uploads/local/${encodeURIComponent(fn)}`;
+                      const subUrl = fn === o.phase4FileName ? o.phase4FileUrl : o.phase4FileUrl; 
                       return (
                         <div key={fn} className="flex items-center justify-between p-2 rounded-xl bg-zinc-900 border border-zinc-800/80 hover:border-indigo-500/20 transition-colors">
                           <span className="text-xs font-mono text-zinc-300 truncate mr-2" title={fn}>📦 {fn}</span>

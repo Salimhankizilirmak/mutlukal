@@ -98,8 +98,7 @@ export default function B2BDashboardPage() {
     } catch (e) {
       console.warn('API upload proxy adımı atlandı, otonom simüle URL atanıyor:', e);
     }
-    // S3 veya ağ kısıtlamalarında tam otonom devamlılık için sanal URL döndür
-    return `/b2b-uploads/local/${encodeURIComponent(targetName)}`;
+    throw new Error('Sunucudan geçerli bir dosya URL\'si alınamadı.');
   };
 
   const handleClientFolderSelection = async (e: React.ChangeEvent<HTMLInputElement>) => {
