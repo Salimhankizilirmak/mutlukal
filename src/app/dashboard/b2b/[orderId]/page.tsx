@@ -390,8 +390,13 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     setPreviewType(isXlsx ? 'xlsx' : 'csv');
 
     try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('Dosya içeriği sunucudan alınamadı.');
+      // Direct file reading through backend API to bypass Next.js static routing bugs on Windows with Cyrillic/Turkish paths
+      const apiUrl = `/api/preview?url=${encodeURIComponent(url)}`;
+      const res = await fetch(apiUrl);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Dosya okunamadı (HTTP ${res.status}).`);
+      }
 
       if (isXlsx) {
         const buffer = await res.arrayBuffer();
