@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Briefcase, Plus, FolderKanban, CheckCircle2, Clock, AlertCircle, ArrowRight, Layers, Building2, Tag, Loader2, Upload } from 'lucide-react';
 import Link from 'next/link';
-import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder, importLocalHistoricalBatch, createImportedOrderBatchClient } from './actions';
+import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder, importLocalHistoricalBatch, createImportedOrderBatchClient, deleteOrder, deleteAllOrders } from './actions';
 
 export default function B2BDashboardPage() {
   const [partners, setPartners] = useState<Array<any>>([]);
@@ -26,6 +26,34 @@ export default function B2BDashboardPage() {
   const [importingBatch, setImportingBatch] = useState(false);
   const [batchSuccess, setBatchSuccess] = useState('');
   const [clientScanProgress, setClientScanProgress] = useState('');
+
+  const handleDeleteSingleOrder = async (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (confirm('Bu sipariş iş akışını tamamen silmek istediğinize emin misiniz?')) {
+      try {
+        await deleteOrder(id);
+        await loadData();
+      } catch (err: any) {
+        alert(err.message || 'Silinemedi');
+      }
+    }
+  };
+
+  const handlePurgeAllOrders = async () => {
+    if (confirm('DİKKAT: Mevcut çalışma alanınızdaki tüm sipariş iş akışı kayıtlarını kalıcı olarak temizlemek istediğinize emin misiniz?')) {
+      setImportingBatch(true);
+      try {
+        await deleteAllOrders();
+        await loadData();
+        setBatchSuccess('✔ Tüm sipariş iş akışları başarıyla temizlendi.');
+      } catch (err: any) {
+        alert(err.message || 'Temizlenemedi');
+      } finally {
+        setImportingBatch(false);
+      }
+    }
+  };
 
   const handleBulkHistoricalImport = async () => {
     if (!selectedPartnerId || !historicalPath.trim()) return;
@@ -518,7 +546,19 @@ export default function B2BDashboardPage() {
             <Layers className="text-indigo-400" size={20} />
             <h2 className="text-base font-bold text-white tracking-tight">Aktif Sipariş İş Akışları</h2>
           </div>
-          <span className="text-xs text-zinc-500">{orders.length} sipariş akışı</span>
+          <div className="flex items-center gap-3">
+            {orders.length > 0 && (
+              <button
+                onClick={handlePurgeAllOrders}
+                disabled={importingBatch}
+                className="text-[11px] font-bold text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5"
+                title="Çalışma alanındaki tüm kayıtları temizle"
+              >
+                <span>🗑️ Tümünü Temizle</span>
+              </button>
+            )}
+            <span className="text-xs text-zinc-500">{orders.length} sipariş akışı</span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -526,7 +566,7 @@ export default function B2BDashboardPage() {
             <Link
               key={order.id}
               href={`/dashboard/b2b/${order.id}`}
-              className="group bg-zinc-950/80 border border-zinc-800/80 hover:border-indigo-500/40 rounded-2xl p-4 transition-all duration-300 block space-y-3 shadow-md"
+              className="group bg-zinc-950/80 border border-zinc-800/80 hover:border-indigo-500/40 rounded-2xl p-4 transition-all duration-300 block space-y-3 shadow-md relative"
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -558,9 +598,18 @@ export default function B2BDashboardPage() {
 
               <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1">
                 <span>Son Güncelleme: {new Date(order.updatedAt || order.createdAt).toLocaleDateString('tr-TR')}</span>
-                <span className="flex items-center gap-1 text-indigo-400 font-bold group-hover:translate-x-1 transition-transform">
-                  Yönet <ArrowRight size={12} />
-                </span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={(e) => handleDeleteSingleOrder(e, order.id)}
+                    className="text-zinc-600 hover:text-rose-400 transition-colors"
+                    title="Bu iş akışını sil"
+                  >
+                    Sil
+                  </button>
+                  <span className="flex items-center gap-1 text-indigo-400 font-bold group-hover:translate-x-1 transition-transform">
+                    Yönet <ArrowRight size={12} />
+                  </span>
+                </div>
               </div>
             </Link>
           ))}

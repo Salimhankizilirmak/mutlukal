@@ -250,3 +250,20 @@ export async function createImportedOrderBatchClient(data: {
   return order;
 }
 
+export async function deleteOrder(orderId: string) {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+
+  await db.delete(b2bOrders).where(eq(b2bOrders.id, orderId));
+  revalidatePath('/dashboard/b2b');
+}
+
+export async function deleteAllOrders() {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+
+  await db.delete(b2bOrders).where(eq(b2bOrders.orgId, context.factoryId));
+  revalidatePath('/dashboard/b2b');
+}
+
+
