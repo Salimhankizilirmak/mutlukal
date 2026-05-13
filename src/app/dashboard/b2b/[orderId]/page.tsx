@@ -133,26 +133,35 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
 
   // General Direct Cloud Upload Logic via Proxy Route with Unbreakable Simulation Fallback
   const uploadToCloud = async (file: File, requestedFilename: string) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('filename', requestedFilename);
-
-    const res = await fetch('/api/upload', {
+    // 1. Get Presigned URL from our API (bypass body limit)
+    const authRes = await fetch('/api/upload', {
       method: 'POST',
-      body: formData,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: requestedFilename,
+        contentType: file.type || 'text/csv'
+      })
     });
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const serverLogs = data?.logs ? `\n\nSunucu Trace Logları:\n- ${data.logs.join('\n- ')}` : '';
-      throw new Error(`Bulut depolama yüklemesi reddedildi (HTTP ${res.status}).\n${data?.error || 'Bilinmeyen hata.'}${serverLogs}`);
+    if (!authRes.ok) {
+      const err = await authRes.json().catch(() => ({}));
+      throw new Error(`Yükleme izni alınamadı: ${err.error || authRes.statusText}`);
     }
 
-    if (data?.publicUrl) return data.publicUrl;
-    
-    // Detailed error if URL is missing despite 200 OK
-    const responseDebug = JSON.stringify(data);
-    throw new Error(`Sunucudan geçerli bir dosya URL'si alınamadı (HTTP 200 ama link yok).\nSunucu yanıtı: ${responseDebug}`);
+    const { presignedUrl, publicUrl } = await authRes.json();
+
+    // 2. Upload directly to Supabase/S3 from Browser (Bypasses Vercel 4.5MB limit)
+    const uploadRes = await fetch(presignedUrl, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type || 'text/csv' }
+    });
+
+    if (!uploadRes.ok) {
+      throw new Error(`Dosya doğrudan buluta yüklenemedi (HTTP ${uploadRes.status}). Lütfen Supabase Bucket/Policy ayarlarını kontrol edin.`);
+    }
+
+    return publicUrl;
   };
 
   // Phase 1 Upload Handler

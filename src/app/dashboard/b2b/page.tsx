@@ -97,33 +97,40 @@ export default function B2BDashboardPage() {
     }
   };
 
-  const uploadFileDirectly = async (file: File, targetName: string) => {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('filename', targetName);
+  const uploadToCloud = async (file: File, requestedFilename: string) => {
+    // 1. Get Presigned URL from our API (bypass body limit)
+    const authRes = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: requestedFilename,
+        contentType: file.type || 'text/csv'
+      })
+    });
 
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        if (data?.publicUrl) return data.publicUrl;
-        
-        // Detailed error if URL is missing despite 200 OK
-        const responseDebug = JSON.stringify(data);
-        throw new Error(`Sunucudan geçerli bir dosya URL'si alınamadı (HTTP 200 ama link yok).\nSunucu yanıtı: ${responseDebug}`);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        const serverLogs = data?.logs ? `\n\nSunucu Trace Logları:\n- ${data.logs.join('\n- ')}` : '';
-        throw new Error(`Bulut depolama yüklemesi reddedildi (HTTP ${res.status}).\n${data?.error || 'Bilinmeyen hata.'}${serverLogs}`);
-      }
-    } catch (e: any) {
-      console.warn('Upload error:', e);
-      throw e;
+    if (!authRes.ok) {
+      const err = await authRes.json().catch(() => ({}));
+      throw new Error(`Yükleme izni alınamadı: ${err.error || authRes.statusText}`);
     }
+
+    const { presignedUrl, publicUrl } = await authRes.json();
+
+    // 2. Upload directly to Supabase/S3 from Browser (Bypasses Vercel 4.5MB limit)
+    const uploadRes = await fetch(presignedUrl, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type || 'text/csv' }
+    });
+
+    if (!uploadRes.ok) {
+      throw new Error(`Dosya doğrudan buluta yüklenemedi (HTTP ${uploadRes.status}). Lütfen Supabase Bucket/Policy ayarlarını kontrol edin.`);
+    }
+
+    return publicUrl;
+  };
+
+  const uploadFileDirectly = async (file: File, targetName: string) => {
+    return await uploadToCloud(file, targetName);
   };
 
   const handleClientFolderSelection = async (e: React.ChangeEvent<HTMLInputElement>) => {
