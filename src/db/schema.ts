@@ -23,6 +23,8 @@ export const importBatches = sqliteTable('importBatches', {
   reportUrl: text('reportUrl'),
   status: text('status').notNull().default('pending'),
   fileSize: integer('fileSize').notNull(),
+  productionDate: text('productionDate'),
+  expirationDate: text('expirationDate'),
   createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   updatedAt: integer('updatedAt', { mode: 'timestamp' }),
 });
@@ -44,4 +46,47 @@ export const batches = sqliteTable('batches', {
   reportUrl: text('reportUrl'),
   status: text('status').default('pending'),
   createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+});
+
+export const b2bPartners = sqliteTable('b2b_partners', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(), // e.g., Triton, Germes, Samakat, TVK Import, Magnit
+  orgId: text('org_id').notNull(),
+  createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+});
+
+export const b2bBrands = sqliteTable('b2b_brands', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  partnerId: text('partner_id').notNull().references(() => b2bPartners.id),
+  name: text('name').notNull(), // e.g., Tortillas, Smart tortillas, Baskısız
+  orgId: text('org_id').notNull(),
+  createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+});
+
+export const b2bOrders = sqliteTable('b2b_orders', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  partnerId: text('partner_id').notNull().references(() => b2bPartners.id),
+  brandId: text('brand_id').references(() => b2bBrands.id),
+  orderName: text('order_name').notNull(), // Custom manual name e.g., "Triton - Nisan", "ZPL-012080"
+  orgId: text('org_id').notNull(),
+  
+  // Phase 1: Firmadan Gelen CSV
+  phase1FileUrl: text('phase1_file_url'),
+  phase1FileName: text('phase1_file_name'),
+  
+  // Phase 2: Makineye Gönderilen Excel
+  phase2FileUrl: text('phase2_file_url'),
+  phase2FileName: text('phase2_file_name'),
+  
+  // Phase 3: Cihazdan Alınan Excel
+  phase3FileUrl: text('phase3_file_url'),
+  phase3FileName: text('phase3_file_name'),
+  
+  // Phase 4: Firmaya Gönderilen Rapor CSV (Reconciled SSCC)
+  phase4FileUrl: text('phase4_file_url'),
+  phase4FileName: text('phase4_file_name'),
+  
+  status: text('status').default('phase1_pending'), // tracks progress
+  createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  updatedAt: integer('updatedAt', { mode: 'timestamp' }),
 });
