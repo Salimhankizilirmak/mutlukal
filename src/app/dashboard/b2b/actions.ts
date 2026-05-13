@@ -388,7 +388,9 @@ export async function deleteMonthFromList(monthId: string) {
     
     if (targetMonth) {
       // 1. Bu ayın araçlarını (orderName prefix) tespit et ve TOPLU sil
-      const vehicleNames = targetMonth.orderCodes || [];
+      const rawCodes = targetMonth.orderCodes || [];
+      const vehicleNames = Array.isArray(rawCodes) ? rawCodes : [];
+      
       if (vehicleNames.length > 0) {
         // SQL Parametre limitini aşmamak için 50'şerli gruplar halinde sil
         const chunkSize = 50;

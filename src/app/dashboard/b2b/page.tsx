@@ -929,7 +929,7 @@ export default function B2BDashboardPage() {
           const curMonth = monthlyMasterList?.months?.find((m: any) => m.monthId === selectedMonthId);
           if (!curMonth) return null;
 
-          const items = curMonth.items || [];
+          const items = Array.isArray(curMonth.items) ? curMonth.items : [];
           const vehicles = Array.from(new Set(items.map((it: any) => String(it.vehicleCode || '')))).filter(Boolean) as string[];
 
           return (
@@ -1042,7 +1042,7 @@ export default function B2BDashboardPage() {
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="text-xs font-mono font-bold text-indigo-300 bg-indigo-950/60 px-2.5 py-0.5 rounded-lg border border-indigo-500/20">
-                                      🔑 {item.orderCode}
+                                      🔑 {item?.orderCode || 'Bilinmiyor'}
                                     </span>
                                     {dbOrder ? (
                                       isFullyDone ? (
