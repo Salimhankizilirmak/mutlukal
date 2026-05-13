@@ -149,7 +149,7 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     }
 
     if (data?.publicUrl) return data.publicUrl;
-    return `/b2b-uploads/local/${encodeURIComponent(requestedFilename)}`;
+    throw new Error('Sunucudan geçerli bir dosya URL\'si alınamadı.');
   };
 
   // Phase 1 Upload Handler
@@ -180,6 +180,7 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     try {
       // Fetch phase 1 raw contents as string text to avoid breaking control chars via sheet_to_json
       const res = await fetch(orderData.order.phase1FileUrl);
+      if (!res.ok) throw new Error(`Kaynak dosya okunamadı (${res.status}). Lütfen dosyayı tekrar yüklemeyi deneyin.`);
       const text = await res.text();
       const cleanText = text.startsWith('\ufeff') ? text.slice(1) : text;
       
@@ -302,6 +303,7 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
 
       if (reportUrl) {
         const reportRes = await fetch(reportUrl);
+        if (!reportRes.ok) throw new Error(`Rapor dosyası sunucuda bulunamadı (${reportRes.status}).`);
         const reportBuffer = await reportRes.arrayBuffer();
         const reportWb = XLSX.read(reportBuffer, { type: 'array' });
         const reportWs = reportWb.Sheets[reportWb.SheetNames[0]];
