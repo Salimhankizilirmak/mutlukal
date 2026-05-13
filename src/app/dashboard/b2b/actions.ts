@@ -3,7 +3,7 @@
 
 import { db } from '@/db';
 import { b2bPartners, b2bBrands, b2bOrders, b2bSettings } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, like } from 'drizzle-orm';
 import { getFactoryContext } from '@/lib/auth-context';
 import { revalidatePath } from 'next/cache';
 import fs from 'fs';
@@ -374,4 +374,36 @@ export async function saveMonthlyMasterList(data: any) {
 
   revalidatePath('/dashboard/b2b');
   return { success: true };
+}
+export async function deleteMonthFromList(monthId: string) {
+  const context = await getFactoryContext();
+  if (!context?.factoryId) throw new Error('Yetkisiz');
+
+  const records = await db.select().from(b2bSettings).where(eq(b2bSettings.orgId, context.factoryId));
+  const found = records.find(r => r.key === 'monthly_master_list');
+  
+  if (found && found.value) {
+    const data = JSON.parse(found.value);
+    const targetMonth = data.months.find((m: any) => m.monthId === monthId);
+    
+    if (targetMonth) {
+      // 1. Bu ayın araçlarını (orderName prefix) tespit et ve sil
+      for (const vehicleName of targetMonth.orderCodes) {
+        // b2bOrders tablosunda orderName 'AraçAdı •' ile başlayanları sil
+        await db.delete(b2bOrders).where(and(
+          eq(b2bOrders.orgId, context.factoryId),
+          like(b2bOrders.orderName, `${vehicleName} • %`)
+        )); 
+      }
+      
+      // 2. Ayı listeden çıkar
+      data.months = data.months.filter((m: any) => m.monthId !== monthId);
+      
+      await db.update(b2bSettings)
+        .set({ value: JSON.stringify(data), updatedAt: new Date() })
+        .where(eq(b2bSettings.id, found.id));
+    }
+  }
+  
+  revalidatePath('/dashboard/b2b');
 }

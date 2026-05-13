@@ -2,10 +2,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Briefcase, Plus, FolderKanban, CheckCircle2, AlertCircle, Building2, Tag, Loader2, Upload, X, ChevronDown, ChevronRight, FileText } from 'lucide-react';
+import { Briefcase, Plus, FolderKanban, CheckCircle2, AlertCircle, Building2, Tag, Loader2, Upload, X, ChevronDown, ChevronRight, FileText, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import * as XLSX from 'xlsx';
-import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder, importLocalHistoricalBatch, createImportedOrderBatchClient, deleteOrder, deleteAllOrders, getMonthlyMasterList, saveMonthlyMasterList } from './actions';
+import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder, importLocalHistoricalBatch, createImportedOrderBatchClient, deleteOrder, deleteAllOrders, getMonthlyMasterList, saveMonthlyMasterList, deleteMonthFromList } from './actions';
 
 export default function B2BDashboardPage() {
   const [partners, setPartners] = useState<Array<any>>([]);
@@ -46,6 +46,23 @@ export default function B2BDashboardPage() {
       } catch (err: any) {
         alert(err.message || 'Silinemedi');
       }
+    }
+  };
+
+  const handleDeleteMonth = async (monthId: string) => {
+    if (!window.confirm('Bu ayı ve bu aya ait TÜM araç dosyalarını silmek istediğinize emin misiniz?')) return;
+    setLoading(true);
+    try {
+      await deleteMonthFromList(monthId);
+      const mList = await getMonthlyMasterList();
+      setMonthlyMasterList(mList);
+      if (selectedMonthId === monthId) setSelectedMonthId('');
+      const oList = await getOrders();
+      setOrders(oList);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -836,13 +853,23 @@ export default function B2BDashboardPage() {
           <div className="flex items-center gap-1.5 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
             <span className="text-[10px] uppercase font-extrabold text-zinc-500 tracking-wider px-2 shrink-0">AYLAR:</span>
             {monthlyMasterList?.months?.map((m: any) => (
-              <button
-                key={m.monthId}
-                onClick={() => setSelectedMonthId(m.monthId)}
-                className={`px-4 py-2 rounded-xl text-xs font-black transition-all shrink-0 ${selectedMonthId === m.monthId ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/50' : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'}`}
-              >
-                {m.monthTitle}
-              </button>
+              <div key={m.monthId} className="flex items-center gap-1">
+                <button
+                  onClick={() => setSelectedMonthId(m.monthId)}
+                  className={`px-4 py-2 rounded-xl text-xs font-black transition-all shrink-0 ${selectedMonthId === m.monthId ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/50' : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'}`}
+                >
+                  {m.monthTitle}
+                </button>
+                {selectedMonthId === m.monthId && (
+                  <button
+                    onClick={() => handleDeleteMonth(m.monthId)}
+                    className="p-2 text-zinc-600 hover:text-rose-500 transition-colors"
+                    title="Ayı ve Verileri Sil"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
             ))}
 
             {(!monthlyMasterList?.months || monthlyMasterList.months.length === 0) && (
