@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, CheckCircle2, Upload, Download, RefreshCw, FileText, AlertCircle, Loader2, Sparkles, Eye, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Upload, Download, RefreshCw, FileText, AlertCircle, Loader2, Sparkles, Eye, X, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import * as XLSX from 'xlsx';
 import { getOrderById, updateOrderPhase, clearPhaseFile } from '../actions';
@@ -23,12 +23,28 @@ const cleanAndFormat = (val: string) => {
   return v;
 };
 
+const safeJsonParse = (str: string | null) => {
+  if (!str) return [];
+  try {
+    const d = JSON.parse(str);
+    return Array.isArray(d) ? d : [];
+  } catch {
+    return [];
+  }
+};
+
 export default function B2BPipelineDetailPage({ params }: { params: { orderId: string } }) {
   const [orderData, setOrderData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [processingPhase, setProcessingPhase] = useState<number | null>(null);
+
+  // Accordion states for multi-file views
+  const [expandedPhase1, setExpandedPhase1] = useState(false);
+  const [expandedPhase2, setExpandedPhase2] = useState(false);
+  const [expandedPhase3, setExpandedPhase3] = useState(false);
+  const [expandedPhase4, setExpandedPhase4] = useState(false);
 
   // Phase 1 Custom filename state
   const [customPhase1Name, setCustomPhase1Name] = useState('');
@@ -423,232 +439,400 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       <div className="space-y-4">
         
         {/* 1. Aşama: Gelen CSV Dosyası */}
-        <div className={`p-5 rounded-2xl border transition-all ${o.phase1FileUrl ? 'bg-zinc-950/60 border-emerald-500/30' : 'bg-zinc-950 border-zinc-800/80'}`}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 font-extrabold flex items-center justify-center text-xs shrink-0">
-                1
-              </span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-white">Gelen İlk Sipariş Verisi</h3>
-                  {o.phase1FileUrl ? (
-                    <span className="bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded text-[10px]">Yüklendi</span>
-                  ) : (
-                    <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">Eksik</span>
-                  )}
+        {(() => {
+          const files1 = safeJsonParse(o.phase1AllFiles);
+          const hasMulti1 = files1.length > 1;
+          return (
+            <div className={`p-5 rounded-2xl border transition-all ${o.phase1FileUrl ? 'bg-zinc-950/60 border-emerald-500/30' : 'bg-zinc-950 border-zinc-800/80'}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div 
+                  onClick={() => hasMulti1 && setExpandedPhase1(!expandedPhase1)}
+                  className={`flex items-center gap-3 ${hasMulti1 ? 'cursor-pointer select-none group' : ''}`}
+                >
+                  <span className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 font-extrabold flex items-center justify-center text-xs shrink-0 group-hover:bg-emerald-500/20 transition-colors">
+                    1
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-white group-hover:text-emerald-300 transition-colors flex items-center gap-1">
+                        <span>Gelen İlk Sipariş Verisi</span>
+                        {hasMulti1 && (
+                          <ChevronDown size={16} className={`text-emerald-400 transition-transform duration-200 ${expandedPhase1 ? 'rotate-180' : ''}`} />
+                        )}
+                      </h3>
+                      {o.phase1FileUrl ? (
+                        <span className="bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded text-[10px]">Yüklendi</span>
+                      ) : (
+                        <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">Eksik</span>
+                      )}
+                      {hasMulti1 && (
+                        <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">+{files1.length - 1} Dosya</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-500 mt-0.5">Müşteriden / klasörden aktarılan temel CSV dosyası</p>
+                  </div>
                 </div>
-                <p className="text-xs text-zinc-500 mt-0.5">Müşteriden / klasörden aktarılan temel CSV dosyası</p>
-              </div>
-            </div>
 
-            {o.phase1FileUrl ? (
-              <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
-                <a href={o.phase1FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-emerald-300 hover:underline max-w-[200px] truncate" title={o.phase1FileName}>
-                  📄 {o.phase1FileName}
-                </a>
-                <button
-                  onClick={() => handleOpenPreview(o.phase1FileUrl, o.phase1FileName)}
-                  className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
-                >
-                  <Eye size={14} /> Önizle
-                </button>
-                <button
-                  onClick={() => handleClearPhase(1)}
-                  title="Yeniden Yükle"
-                  className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
-                >
-                  <X size={14} />
-                </button>
+                {o.phase1FileUrl ? (
+                  <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
+                    <a href={o.phase1FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-emerald-300 hover:underline max-w-[200px] truncate" title={o.phase1FileName}>
+                      📄 {o.phase1FileName}
+                    </a>
+                    <button
+                      onClick={() => handleOpenPreview(o.phase1FileUrl, o.phase1FileName)}
+                      className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
+                    >
+                      <Eye size={14} /> Önizle
+                    </button>
+                    <button
+                      onClick={() => handleClearPhase(1)}
+                      title="Yeniden Yükle"
+                      className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <input
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      onChange={e => setPhase1File(e.target.files?.[0] || null)}
+                      className="text-xs text-zinc-400 file:mr-2 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-500/10 file:text-emerald-400 hover:file:bg-emerald-500/20 max-w-[220px]"
+                    />
+                    <button
+                      onClick={handlePhase1Submit}
+                      disabled={processingPhase === 1 || !phase1File}
+                      className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-white font-bold px-4 py-2 rounded-xl text-xs transition-all shrink-0 flex items-center gap-1.5"
+                    >
+                      {processingPhase === 1 ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                      <span>Yükle</span>
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <input
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  onChange={e => setPhase1File(e.target.files?.[0] || null)}
-                  className="text-xs text-zinc-400 file:mr-2 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-500/10 file:text-emerald-400 hover:file:bg-emerald-500/20 max-w-[220px]"
-                />
-                <button
-                  onClick={handlePhase1Submit}
-                  disabled={processingPhase === 1 || !phase1File}
-                  className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-white font-bold px-4 py-2 rounded-xl text-xs transition-all shrink-0 flex items-center gap-1.5"
-                >
-                  {processingPhase === 1 ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                  <span>Yükle</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+
+              {/* Collapsible Subfiles Drawer */}
+              {hasMulti1 && expandedPhase1 && (
+                <div className="mt-4 pt-3 border-t border-emerald-500/10 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase mb-2 tracking-wider">Gruptaki Tüm Dosyalar</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                    {files1.map((fItem: any) => {
+                      const fn = typeof fItem === 'string' ? fItem : fItem?.name;
+                      if (!fn) return null;
+                      const subUrl = fn === o.phase1FileName ? o.phase1FileUrl : `/b2b-uploads/local/${encodeURIComponent(fn)}`;
+                      return (
+                        <div key={fn} className="flex items-center justify-between p-2 rounded-xl bg-zinc-900 border border-zinc-800/80 hover:border-emerald-500/20 transition-colors">
+                          <span className="text-xs font-mono text-zinc-300 truncate mr-2" title={fn}>📄 {fn}</span>
+                          <button
+                            onClick={() => handleOpenPreview(subUrl, fn)}
+                            className="text-[10px] bg-zinc-800 hover:bg-emerald-500/10 text-zinc-400 hover:text-emerald-400 font-bold px-2 py-1 rounded-lg transition-colors shrink-0 flex items-center gap-1"
+                          >
+                            <Eye size={12} /> Önizle
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* 2. Aşama: Makine Şablonu */}
-        <div className={`p-5 rounded-2xl border transition-all ${o.phase2FileUrl ? 'bg-zinc-950/60 border-purple-500/30' : 'bg-zinc-950 border-zinc-800/80'}`}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 font-extrabold flex items-center justify-center text-xs shrink-0">
-                2
-              </span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-white">Makine Hat Şablonu</h3>
-                  {o.phase2FileUrl ? (
-                    <span className="bg-purple-500/10 text-purple-400 font-bold px-2 py-0.5 rounded text-[10px]">Hazır</span>
-                  ) : (
-                    <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">Bekliyor</span>
-                  )}
+        {(() => {
+          const files2 = safeJsonParse(o.phase2AllFiles);
+          const hasMulti2 = files2.length > 1;
+          return (
+            <div className={`p-5 rounded-2xl border transition-all ${o.phase2FileUrl ? 'bg-zinc-950/60 border-purple-500/30' : 'bg-zinc-950 border-zinc-800/80'}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div 
+                  onClick={() => hasMulti2 && setExpandedPhase2(!expandedPhase2)}
+                  className={`flex items-center gap-3 ${hasMulti2 ? 'cursor-pointer select-none group' : ''}`}
+                >
+                  <span className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 font-extrabold flex items-center justify-center text-xs shrink-0 group-hover:bg-purple-500/20 transition-colors">
+                    2
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-white group-hover:text-purple-300 transition-colors flex items-center gap-1">
+                        <span>Makine Hat Şablonu</span>
+                        {hasMulti2 && (
+                          <ChevronDown size={16} className={`text-purple-400 transition-transform duration-200 ${expandedPhase2 ? 'rotate-180' : ''}`} />
+                        )}
+                      </h3>
+                      {o.phase2FileUrl ? (
+                        <span className="bg-purple-500/10 text-purple-400 font-bold px-2 py-0.5 rounded text-[10px]">Hazır</span>
+                      ) : (
+                        <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">Bekliyor</span>
+                      )}
+                      {hasMulti2 && (
+                        <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">+{files2.length - 1} Dosya</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-500 mt-0.5">Hat cihazlarının okuyacağı standart temiz Excel şablonu</p>
+                  </div>
                 </div>
-                <p className="text-xs text-zinc-500 mt-0.5">Hat cihazlarının okuyacağı standart temiz Excel şablonu</p>
-              </div>
-            </div>
 
-            {o.phase2FileUrl ? (
-              <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
-                <a href={o.phase2FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-purple-300 hover:underline max-w-[200px] truncate" title={o.phase2FileName}>
-                  ⚙️ {o.phase2FileName}
-                </a>
-                <button
-                  onClick={() => handleOpenPreview(o.phase2FileUrl, o.phase2FileName)}
-                  className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
-                >
-                  <Eye size={14} /> Önizle
-                </button>
-                <button
-                  onClick={() => handleClearPhase(2)}
-                  title="Şablonu Sıfırla"
-                  className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
-                >
-                  <X size={14} />
-                </button>
+                {o.phase2FileUrl ? (
+                  <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
+                    <a href={o.phase2FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-purple-300 hover:underline max-w-[200px] truncate" title={o.phase2FileName}>
+                      ⚙️ {o.phase2FileName}
+                    </a>
+                    <button
+                      onClick={() => handleOpenPreview(o.phase2FileUrl, o.phase2FileName)}
+                      className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
+                    >
+                      <Eye size={14} /> Önizle
+                    </button>
+                    <button
+                      onClick={() => handleClearPhase(2)}
+                      title="Şablonu Sıfırla"
+                      className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handlePhase2Generate}
+                      disabled={processingPhase === 2 || !o.phase1FileUrl}
+                      className="bg-purple-600 hover:bg-purple-500 disabled:opacity-30 text-white font-bold px-5 py-2 rounded-xl text-xs transition-all flex items-center gap-2 shadow-md"
+                    >
+                      {processingPhase === 2 ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                      <span>Şablonu Otomatik Üret</span>
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handlePhase2Generate}
-                  disabled={processingPhase === 2 || !o.phase1FileUrl}
-                  className="bg-purple-600 hover:bg-purple-500 disabled:opacity-30 text-white font-bold px-5 py-2 rounded-xl text-xs transition-all flex items-center gap-2 shadow-md"
-                >
-                  {processingPhase === 2 ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-                  <span>Şablonu Otomatik Üret</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+
+              {/* Collapsible Subfiles Drawer */}
+              {hasMulti2 && expandedPhase2 && (
+                <div className="mt-4 pt-3 border-t border-purple-500/10 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase mb-2 tracking-wider">Gruptaki Tüm Şablon Dosyaları</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                    {files2.map((fItem: any) => {
+                      const fn = typeof fItem === 'string' ? fItem : fItem?.name;
+                      if (!fn) return null;
+                      const subUrl = fn === o.phase2FileName ? o.phase2FileUrl : `/b2b-uploads/local/${encodeURIComponent(fn)}`;
+                      return (
+                        <div key={fn} className="flex items-center justify-between p-2 rounded-xl bg-zinc-900 border border-zinc-800/80 hover:border-purple-500/20 transition-colors">
+                          <span className="text-xs font-mono text-zinc-300 truncate mr-2" title={fn}>⚙️ {fn}</span>
+                          <button
+                            onClick={() => handleOpenPreview(subUrl, fn)}
+                            className="text-[10px] bg-zinc-800 hover:bg-purple-500/10 text-zinc-400 hover:text-purple-400 font-bold px-2 py-1 rounded-lg transition-colors shrink-0 flex items-center gap-1"
+                          >
+                            <Eye size={12} /> Önizle
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* 3. Aşama: Cihaz Sonucu */}
-        <div className={`p-5 rounded-2xl border transition-all ${o.phase3FileUrl ? 'bg-zinc-950/60 border-blue-500/30' : 'bg-zinc-950 border-zinc-800/80'}`}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-400 font-extrabold flex items-center justify-center text-xs shrink-0">
-                3
-              </span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-white">Üretim Hattı Çıktısı</h3>
-                  {o.phase3FileUrl ? (
-                    <span className="bg-blue-500/10 text-blue-400 font-bold px-2 py-0.5 rounded text-[10px]">Yüklendi</span>
-                  ) : (
-                    <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">Bekliyor</span>
-                  )}
+        {(() => {
+          const files3 = safeJsonParse(o.phase3AllFiles);
+          const hasMulti3 = files3.length > 1;
+          return (
+            <div className={`p-5 rounded-2xl border transition-all ${o.phase3FileUrl ? 'bg-zinc-950/60 border-blue-500/30' : 'bg-zinc-950 border-zinc-800/80'}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div 
+                  onClick={() => hasMulti3 && setExpandedPhase3(!expandedPhase3)}
+                  className={`flex items-center gap-3 ${hasMulti3 ? 'cursor-pointer select-none group' : ''}`}
+                >
+                  <span className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-400 font-extrabold flex items-center justify-center text-xs shrink-0 group-hover:bg-blue-500/20 transition-colors">
+                    3
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-white group-hover:text-blue-300 transition-colors flex items-center gap-1">
+                        <span>Üretim Hattı Çıktısı</span>
+                        {hasMulti3 && (
+                          <ChevronDown size={16} className={`text-blue-400 transition-transform duration-200 ${expandedPhase3 ? 'rotate-180' : ''}`} />
+                        )}
+                      </h3>
+                      {o.phase3FileUrl ? (
+                        <span className="bg-blue-500/10 text-blue-400 font-bold px-2 py-0.5 rounded text-[10px]">Yüklendi</span>
+                      ) : (
+                        <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">Bekliyor</span>
+                      )}
+                      {hasMulti3 && (
+                        <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">+{files3.length - 1} Dosya</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-500 mt-0.5">Hat cihazından alınan işlenmiş karekod sonuç dosyası</p>
+                  </div>
                 </div>
-                <p className="text-xs text-zinc-500 mt-0.5">Hat cihazından alınan işlenmiş karekod sonuç dosyası</p>
-              </div>
-            </div>
 
-            {o.phase3FileUrl ? (
-              <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
-                <a href={o.phase3FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-blue-300 hover:underline max-w-[200px] truncate" title={o.phase3FileName}>
-                  📱 {o.phase3FileName}
-                </a>
-                <button
-                  onClick={() => handleOpenPreview(o.phase3FileUrl, o.phase3FileName)}
-                  className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
-                >
-                  <Eye size={14} /> Önizle
-                </button>
-                <button
-                  onClick={() => handleClearPhase(3)}
-                  title="Çıktıyı Temizle"
-                  className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
-                >
-                  <X size={14} />
-                </button>
+                {o.phase3FileUrl ? (
+                  <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
+                    <a href={o.phase3FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-blue-300 hover:underline max-w-[200px] truncate" title={o.phase3FileName}>
+                      📱 {o.phase3FileName}
+                    </a>
+                    <button
+                      onClick={() => handleOpenPreview(o.phase3FileUrl, o.phase3FileName)}
+                      className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
+                    >
+                      <Eye size={14} /> Önizle
+                    </button>
+                    <button
+                      onClick={() => handleClearPhase(3)}
+                      title="Çıktıyı Temizle"
+                      className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <input
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      onChange={e => setPhase3File(e.target.files?.[0] || null)}
+                      className="text-xs text-zinc-400 file:mr-2 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-500/10 file:text-blue-400 hover:file:bg-blue-500/20 max-w-[220px]"
+                    />
+                    <button
+                      onClick={handlePhase3Submit}
+                      disabled={processingPhase === 3 || !phase3File}
+                      className="bg-blue-600 hover:bg-blue-500 disabled:opacity-30 text-white font-bold px-4 py-2 rounded-xl text-xs transition-all shrink-0 flex items-center gap-1.5"
+                    >
+                      {processingPhase === 3 ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                      <span>Yükle</span>
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <input
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  onChange={e => setPhase3File(e.target.files?.[0] || null)}
-                  className="text-xs text-zinc-400 file:mr-2 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-500/10 file:text-blue-400 hover:file:bg-blue-500/20 max-w-[220px]"
-                />
-                <button
-                  onClick={handlePhase3Submit}
-                  disabled={processingPhase === 3 || !phase3File}
-                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-30 text-white font-bold px-4 py-2 rounded-xl text-xs transition-all shrink-0 flex items-center gap-1.5"
-                >
-                  {processingPhase === 3 ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                  <span>Yükle</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+
+              {/* Collapsible Subfiles Drawer */}
+              {hasMulti3 && expandedPhase3 && (
+                <div className="mt-4 pt-3 border-t border-blue-500/10 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase mb-2 tracking-wider">Gruptaki Tüm Çıktı Dosyaları</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                    {files3.map((fItem: any) => {
+                      const fn = typeof fItem === 'string' ? fItem : fItem?.name;
+                      if (!fn) return null;
+                      const subUrl = fn === o.phase3FileName ? o.phase3FileUrl : `/b2b-uploads/local/${encodeURIComponent(fn)}`;
+                      return (
+                        <div key={fn} className="flex items-center justify-between p-2 rounded-xl bg-zinc-900 border border-zinc-800/80 hover:border-blue-500/20 transition-colors">
+                          <span className="text-xs font-mono text-zinc-300 truncate mr-2" title={fn}>📱 {fn}</span>
+                          <button
+                            onClick={() => handleOpenPreview(subUrl, fn)}
+                            className="text-[10px] bg-zinc-800 hover:bg-blue-500/10 text-zinc-400 hover:text-blue-400 font-bold px-2 py-1 rounded-lg transition-colors shrink-0 flex items-center gap-1"
+                          >
+                            <Eye size={12} /> Önizle
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* 4. Aşama: Nihai Koli Raporu */}
-        <div className={`p-5 rounded-2xl border transition-all ${o.phase4FileUrl ? 'bg-zinc-950/60 border-indigo-500/30' : 'bg-gradient-to-r from-zinc-950 via-indigo-950/20 to-zinc-950 border-indigo-500/40'}`}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-400 font-extrabold flex items-center justify-center text-xs shrink-0">
-                4
-              </span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-white">Nihai SSCC Koli Atama Raporu</h3>
-                  {o.phase4FileUrl ? (
-                    <span className="bg-indigo-500/10 text-indigo-400 font-bold px-2 py-0.5 rounded text-[10px]">Tamamlandı</span>
-                  ) : (
-                    <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">Bekliyor</span>
-                  )}
+        {(() => {
+          const files4 = safeJsonParse(o.phase4AllFiles);
+          const hasMulti4 = files4.length > 1;
+          return (
+            <div className={`p-5 rounded-2xl border transition-all ${o.phase4FileUrl ? 'bg-zinc-950/60 border-indigo-500/30' : 'bg-gradient-to-r from-zinc-950 via-indigo-950/20 to-zinc-950 border-indigo-500/40'}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div 
+                  onClick={() => hasMulti4 && setExpandedPhase4(!expandedPhase4)}
+                  className={`flex items-center gap-3 ${hasMulti4 ? 'cursor-pointer select-none group' : ''}`}
+                >
+                  <span className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-400 font-extrabold flex items-center justify-center text-xs shrink-0 group-hover:bg-indigo-500/20 transition-colors">
+                    4
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors flex items-center gap-1">
+                        <span>Nihai SSCC Koli Atama Raporu</span>
+                        {hasMulti4 && (
+                          <ChevronDown size={16} className={`text-indigo-400 transition-transform duration-200 ${expandedPhase4 ? 'rotate-180' : ''}`} />
+                        )}
+                      </h3>
+                      {o.phase4FileUrl ? (
+                        <span className="bg-indigo-500/10 text-indigo-400 font-bold px-2 py-0.5 rounded text-[10px]">Tamamlandı</span>
+                      ) : (
+                        <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">Bekliyor</span>
+                      )}
+                      {hasMulti4 && (
+                        <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">+{files4.length - 1} Rapor</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-500 mt-0.5">Her 30 üründe bir ardışık SSCC koli kodlarının atandığı tam rapor</p>
+                  </div>
                 </div>
-                <p className="text-xs text-zinc-500 mt-0.5">Her 30 üründe bir ardışık SSCC koli kodlarının atandığı tam rapor</p>
-              </div>
-            </div>
 
-            {o.phase4FileUrl ? (
-              <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
-                <a href={o.phase4FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-indigo-300 hover:underline max-w-[200px] truncate" title={o.phase4FileName}>
-                  📦 {o.phase4FileName}
-                </a>
-                <button
-                  onClick={() => handleOpenPreview(o.phase4FileUrl, o.phase4FileName)}
-                  className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
-                >
-                  <Eye size={14} /> Önizle
-                </button>
-                <button
-                  onClick={() => handleClearPhase(4)}
-                  title="Raporu Sıfırla"
-                  className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
-                >
-                  <X size={14} />
-                </button>
+                {o.phase4FileUrl ? (
+                  <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
+                    <a href={o.phase4FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-indigo-300 hover:underline max-w-[200px] truncate" title={o.phase4FileName}>
+                      📦 {o.phase4FileName}
+                    </a>
+                    <button
+                      onClick={() => handleOpenPreview(o.phase4FileUrl, o.phase4FileName)}
+                      className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
+                    >
+                      <Eye size={14} /> Önizle
+                    </button>
+                    <button
+                      onClick={() => handleClearPhase(4)}
+                      title="Raporu Sıfırla"
+                      className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handlePhase4Finalize}
+                      disabled={processingPhase === 4 || (!o.phase3FileUrl && !o.phase1FileUrl)}
+                      className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-30 text-white font-bold px-5 py-2 rounded-xl text-xs transition-all flex items-center gap-2 shadow-md"
+                    >
+                      {processingPhase === 4 ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                      <span>Koli Kodlarını Ata & Üret</span>
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handlePhase4Finalize}
-                  disabled={processingPhase === 4 || (!o.phase3FileUrl && !o.phase1FileUrl)}
-                  className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-30 text-white font-bold px-5 py-2 rounded-xl text-xs transition-all flex items-center gap-2 shadow-md"
-                >
-                  {processingPhase === 4 ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                  <span>Koli Kodlarını Ata & Üret</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+
+              {/* Collapsible Subfiles Drawer */}
+              {hasMulti4 && expandedPhase4 && (
+                <div className="mt-4 pt-3 border-t border-indigo-500/10 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase mb-2 tracking-wider">Gruptaki Tüm Atanmış Raporlar</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                    {files4.map((fItem: any) => {
+                      const fn = typeof fItem === 'string' ? fItem : fItem?.name;
+                      if (!fn) return null;
+                      const subUrl = fn === o.phase4FileName ? o.phase4FileUrl : `/b2b-uploads/local/${encodeURIComponent(fn)}`;
+                      return (
+                        <div key={fn} className="flex items-center justify-between p-2 rounded-xl bg-zinc-900 border border-zinc-800/80 hover:border-indigo-500/20 transition-colors">
+                          <span className="text-xs font-mono text-zinc-300 truncate mr-2" title={fn}>📦 {fn}</span>
+                          <button
+                            onClick={() => handleOpenPreview(subUrl, fn)}
+                            className="text-[10px] bg-zinc-800 hover:bg-indigo-500/10 text-zinc-400 hover:text-indigo-400 font-bold px-2 py-1 rounded-lg transition-colors shrink-0 flex items-center gap-1"
+                          >
+                            <Eye size={12} /> Önizle
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
       </div>
 
