@@ -46,7 +46,8 @@ export async function GET(req: NextRequest) {
       let cloudRes: Response | null = null;
 
       if (isAbsolute) {
-        cloudRes = await fetch(rawDecoded);
+        // Encode the absolute URL properly to handle Cyrillic and spaces before fetching from cloud
+        cloudRes = await fetch(encodeURI(rawDecoded));
       } else {
         // Variation A: Clean single-encoded path segments (Standard for modern Next.js/Vercel static asset routing routers)
         const singleEncodedPath = rawDecoded.split('/').map(segment => encodeURIComponent(segment)).join('/');

@@ -480,7 +480,7 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
           const ws = wb.Sheets[sheetName];
           const rawMatrix = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
           
-          // Let's create uniform headers like Excel: A, B, C, D...
+          // Create headers like A, B, C...
           let maxCols = 0;
           rawMatrix.forEach(r => { if (r && r.length > maxCols) maxCols = r.length; });
           
@@ -510,8 +510,8 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
         setPreviewContentCsv(text);
       }
     } catch (err: any) {
-      setPreviewContentCsv(`HATA: Dosya önizlemesi yüklenemedi.\nDetay: ${err.message || 'Bilinmeyen ağ hatası.'}`);
-      setPreviewType('csv');
+      console.error('Preview error:', err);
+      setError(`Önizleme yüklenemedi: ${err.message}`);
     } finally {
       setPreviewLoading(false);
     }
