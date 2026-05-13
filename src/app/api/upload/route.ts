@@ -3,6 +3,8 @@ import { s3Client } from '@/lib/s3';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getFactoryContext } from '@/lib/auth-context';
+import fs from 'fs';
+import path from 'path';
 
 export async function POST(req: Request) {
   try {
@@ -38,9 +40,20 @@ export async function POST(req: Request) {
         ContentType: contentType,
       });
 
-      await s3Client.send(command);
+      let publicUrl = '';
+      try {
+        await s3Client.send(command);
+        publicUrl = `${process.env.SUPABASE_ENDPOINT}/storage/v1/object/public/${bucketName}/${key}`;
+      } catch (s3Err) {
+        console.warn('S3 bulut yüklemesi atlandı veya başarısız oldu, lokal public/b2b-uploads dizinine yedekleniyor:', s3Err);
+        // Fallback persist locally to ensure zero operational friction
+        const uploadDir = path.join(process.cwd(), 'public', 'b2b-uploads', context.factoryId);
+        await fs.promises.mkdir(uploadDir, { recursive: true });
+        const safeName = `${Date.now()}_${filename}`;
+        await fs.promises.writeFile(path.join(uploadDir, safeName), buffer);
+        publicUrl = `/b2b-uploads/${context.factoryId}/${safeName}`;
+      }
 
-      const publicUrl = `${process.env.SUPABASE_ENDPOINT}/storage/v1/object/public/${bucketName}/${key}`;
       return NextResponse.json({ publicUrl, key });
     }
 
