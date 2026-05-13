@@ -290,4 +290,48 @@ export async function deleteAllOrders() {
   revalidatePath('/dashboard/b2b');
 }
 
+export async function clearPhaseFile(orderId: string, phase: 1 | 2 | 3 | 4) {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
 
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (phase === 1) {
+    updateData.phase1FileUrl = null;
+    updateData.phase1FileName = null;
+    updateData.phase1AllFiles = null;
+    updateData.status = 'phase1_pending';
+  } else if (phase === 2) {
+    updateData.phase2FileUrl = null;
+    updateData.phase2FileName = null;
+    updateData.phase2AllFiles = null;
+    updateData.status = 'phase2_pending';
+  } else if (phase === 3) {
+    updateData.phase3FileUrl = null;
+    updateData.phase3FileName = null;
+    updateData.phase3AllFiles = null;
+    updateData.status = 'phase3_pending';
+  } else if (phase === 4) {
+    updateData.phase4FileUrl = null;
+    updateData.phase4FileName = null;
+    updateData.phase4AllFiles = null;
+    updateData.status = 'phase4_pending';
+  }
+
+  await db.update(b2bOrders).set(updateData).where(eq(b2bOrders.id, orderId));
+  revalidatePath('/dashboard/b2b');
+  revalidatePath(`/dashboard/b2b/${orderId}`);
+}
+
+export async function updatePhaseNote(orderId: string, phase: 1 | 2 | 3 | 4, note: string) {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (phase === 1) updateData.phase1Note = note;
+  else if (phase === 2) updateData.phase2Note = note;
+  else if (phase === 3) updateData.phase3Note = note;
+  else if (phase === 4) updateData.phase4Note = note;
+
+  await db.update(b2bOrders).set(updateData).where(eq(b2bOrders.id, orderId));
+  revalidatePath(`/dashboard/b2b/${orderId}`);
+}

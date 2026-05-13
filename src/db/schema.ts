@@ -90,6 +90,12 @@ export const b2bOrders = sqliteTable('b2b_orders', {
   phase4FileName: text('phase4_file_name'),
   phase4AllFiles: text('phase4_all_files'), // JSON array: [{name, size}]
 
+  // Notlar (her aşama için serbest metin notu)
+  phase1Note: text('phase1_note'),
+  phase2Note: text('phase2_note'),
+  phase3Note: text('phase3_note'),
+  phase4Note: text('phase4_note'),
+
   status: text('status').default('phase1_pending'), // tracks progress
   createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   updatedAt: integer('updatedAt', { mode: 'timestamp' }),
