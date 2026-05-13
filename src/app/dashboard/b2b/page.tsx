@@ -111,11 +111,19 @@ export default function B2BDashboardPage() {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (data?.publicUrl) return data.publicUrl;
+        
+        // Detailed error if URL is missing despite 200 OK
+        const responseDebug = JSON.stringify(data);
+        throw new Error(`Sunucudan geçerli bir dosya URL'si alınamadı (HTTP 200 ama link yok).\nSunucu yanıtı: ${responseDebug}`);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        const serverLogs = data?.logs ? `\n\nSunucu Trace Logları:\n- ${data.logs.join('\n- ')}` : '';
+        throw new Error(`Bulut depolama yüklemesi reddedildi (HTTP ${res.status}).\n${data?.error || 'Bilinmeyen hata.'}${serverLogs}`);
       }
-    } catch (e) {
-      console.warn('API upload proxy adımı atlandı, otonom simüle URL atanıyor:', e);
+    } catch (e: any) {
+      console.warn('Upload error:', e);
+      throw e;
     }
-    throw new Error('Sunucudan geçerli bir dosya URL\'si alınamadı.');
   };
 
   const handleClientFolderSelection = async (e: React.ChangeEvent<HTMLInputElement>) => {
