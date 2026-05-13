@@ -422,10 +422,10 @@ export async function sendB2BReportEmail(orderId: string, reportUrl: string, fil
   const context = await getFactoryContext();
   if (!context.factoryId) throw new Error('Yetkisiz');
 
-  const { vehicleCode, orderCode, ssccRange, prodDate, expDate, batchNo } = subjectData;
+  const { vehicleCode, orderCode, prodDate, expDate, batchNo } = subjectData;
   
-  // Subject: Подтверждение заказа (чесни знак) - KB-006328/ ZPK-010320 - ZPL-012080 08.05.2026 - 08.11.2026 (26050825-2)
-  const subject = `Подтверждение заказа (чесни знак) - ${vehicleCode}/ ${orderCode} - ${ssccRange} ${prodDate} - ${expDate} (${batchNo})`;
+  // Subject: Подтверждение заказа (чесни знак) - KB-006328/ ZPK-010320 08.05.2026 - 08.11.2026 (26050825-2)
+  const subject = `Подтверждение заказа (чесни знак) - ${vehicleCode}/ ${orderCode} ${prodDate} - ${expDate} (${batchNo})`;
 
   // Fetch report content for attachment
   const res = await fetch(reportUrl);
