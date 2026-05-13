@@ -997,37 +997,51 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
 
                   {/* Excel Spreadsheet Table Data Container */}
                   <div className="flex-1 overflow-auto bg-zinc-950/80 p-0">
-                    {previewSheetsData[previewActiveTabSheet] ? (
-                      <table className="w-full border-collapse text-[11px]">
-                        <thead>
-                          <tr className="sticky top-0 z-10 bg-zinc-900">
-                            <th className="w-10 bg-zinc-900 border border-zinc-800 text-zinc-500 font-mono text-[10px] sticky left-0 z-20">#</th>
-                            {previewSheetsData[previewActiveTabSheet].headers.map((hCol, cIdx) => (
-                              <th key={cIdx} className="px-3 py-1 bg-zinc-900 border border-zinc-800 text-zinc-300 font-bold text-center min-w-[100px]">
-                                {hCol}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {previewSheetsData[previewActiveTabSheet].rows.map((rowCells, rIdx) => (
-                            <tr key={rIdx} className="hover:bg-zinc-900/40">
-                              <td className="w-10 bg-zinc-900/90 border border-zinc-800 text-zinc-500 font-mono text-[10px] text-center sticky left-0 z-10 select-none">
-                                {rIdx + 1}
-                              </td>
-                              {previewSheetsData[previewActiveTabSheet].headers.map((_, colIdx) => {
-                                const val = rowCells ? rowCells[colIdx] : '';
-                                return (
-                                  <td key={colIdx} className="px-2.5 py-1 border border-zinc-800/80 text-zinc-300 font-mono truncate max-w-[250px]">
-                                    {val !== undefined && val !== null ? String(val) : ''}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
+                    {previewSheetsData[previewActiveTabSheet] ? (() => {
+                      const activeSheet = previewSheetsData[previewActiveTabSheet];
+                      const totalRows = activeSheet.rows?.length || 0;
+                      const displayedRows = activeSheet.rows?.slice(0, 150) || [];
+                      return (
+                        <div className="flex-1 flex flex-col overflow-hidden">
+                          <div className="flex-1 overflow-auto">
+                            <table className="w-full border-collapse text-[11px]">
+                              <thead>
+                                <tr className="sticky top-0 z-10 bg-zinc-900">
+                                  <th className="w-10 bg-zinc-900 border border-zinc-800 text-zinc-500 font-mono text-[10px] sticky left-0 z-20">#</th>
+                                  {activeSheet.headers.map((hCol, cIdx) => (
+                                    <th key={cIdx} className="px-3 py-1 bg-zinc-900 border border-zinc-800 text-zinc-300 font-bold text-center min-w-[100px]">
+                                      {hCol}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {displayedRows.map((rowCells, rIdx) => (
+                                  <tr key={rIdx} className="hover:bg-zinc-900/40">
+                                    <td className="w-10 bg-zinc-900/90 border border-zinc-800 text-zinc-500 font-mono text-[10px] text-center sticky left-0 z-10 select-none">
+                                      {rIdx + 1}
+                                    </td>
+                                    {activeSheet.headers.map((_, colIdx) => {
+                                      const val = rowCells ? rowCells[colIdx] : '';
+                                      return (
+                                        <td key={colIdx} className="px-2.5 py-1 border border-zinc-800/80 text-zinc-300 font-mono truncate max-w-[250px]">
+                                          {val !== undefined && val !== null ? String(val) : ''}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          {totalRows > 150 && (
+                            <div className="bg-zinc-900 text-emerald-400/90 text-[10px] px-3 py-1.5 border-t border-zinc-800 text-center italic shrink-0 font-mono">
+                              ⚡ Performans için ilk 150 satır gösterilmektedir. Toplam {totalRows.toLocaleString()} satır mevcut.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })() : (
                       <div className="p-8 text-center text-zinc-600 text-xs italic">Seçili sekmede veri bulunmuyor.</div>
                     )}
                   </div>
@@ -1044,25 +1058,37 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
                   </div>
 
                   {/* Notepad++ Editor lines view */}
-                  <div className="flex-1 overflow-auto p-0 font-mono text-[11px] leading-relaxed select-text">
-                    {previewContentCsv ? (
-                      <div className="flex min-w-max">
-                        {/* Line numbers column */}
-                        <div className="shrink-0 bg-[#1e1e1e] text-[#858585] py-2 px-3 select-none text-right border-r border-[#333] sticky left-0 z-10">
-                          {previewContentCsv.split('\n').map((_, idx) => (
-                            <div key={idx} className="h-5 leading-5">{idx + 1}</div>
-                          ))}
-                        </div>
-                        {/* Text lines column */}
-                        <div className="flex-1 py-2 px-4 text-[#d4d4d4] overflow-x-auto whitespace-pre">
-                          {previewContentCsv.split('\n').map((lineText, idx) => (
-                            <div key={idx} className="h-5 leading-5 flex items-center">
-                              <span className="text-[#ce9178]">{lineText || ' '}</span>
+                  <div className="flex-1 overflow-auto p-0 font-mono text-[11px] leading-relaxed select-text flex flex-col">
+                    {previewContentCsv ? (() => {
+                      const allLines = previewContentCsv.split('\n');
+                      const totalLines = allLines.length;
+                      const displayedLines = allLines.slice(0, 150);
+                      return (
+                        <div className="flex-1 flex flex-col justify-between min-w-max">
+                          <div className="flex min-w-max">
+                            {/* Line numbers column */}
+                            <div className="shrink-0 bg-[#1e1e1e] text-[#858585] py-2 px-3 select-none text-right border-r border-[#333] sticky left-0 z-10">
+                              {displayedLines.map((_, idx) => (
+                                <div key={idx} className="h-5 leading-5">{idx + 1}</div>
+                              ))}
                             </div>
-                          ))}
+                            {/* Text lines column */}
+                            <div className="flex-1 py-2 px-4 text-[#d4d4d4] overflow-x-auto whitespace-pre">
+                              {displayedLines.map((lineText, idx) => (
+                                <div key={idx} className="h-5 leading-5 flex items-center">
+                                  <span className="text-[#ce9178]">{lineText || ' '}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          {totalLines > 150 && (
+                            <div className="bg-[#252526] text-amber-400/90 text-[10px] px-3 py-1.5 border-t border-[#333] text-center italic shrink-0 sticky bottom-0 left-0">
+                              ⚡ Performans için ilk 150 satır gösterilmektedir. Toplam {totalLines.toLocaleString()} satır mevcut.
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ) : (
+                      );
+                    })() : (
                       <div className="p-8 text-center text-zinc-600 text-xs italic">Dosya içeriği boş.</div>
                     )}
                   </div>
