@@ -50,7 +50,8 @@ export async function POST(req: Request) {
       let publicUrl = '';
       try {
         await s3Client.send(command);
-        publicUrl = `${process.env.SUPABASE_ENDPOINT}/storage/v1/object/public/${bucketName}/${key}`;
+        const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_ENDPOINT?.replace('/storage/v1/s3', '').replace('.storage.', '.') || '';
+        publicUrl = `${baseUrl}/storage/v1/object/public/${bucketName}/${key}`;
       } catch (s3Err) {
         console.warn('S3 bulut yüklemesi atlandı veya başarısız oldu, lokal public/b2b-uploads dizinine yedekleniyor:', s3Err);
         // Fallback persist locally to ensure zero operational friction
@@ -79,7 +80,8 @@ export async function POST(req: Request) {
     });
 
     const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-    const publicUrl = `${process.env.SUPABASE_ENDPOINT}/storage/v1/object/public/${bucketName}/${key}`;
+    const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_ENDPOINT?.replace('/storage/v1/s3', '').replace('.storage.', '.') || '';
+    const publicUrl = `${baseUrl}/storage/v1/object/public/${bucketName}/${key}`;
 
     return NextResponse.json({ presignedUrl, publicUrl, key });
   } catch (error: unknown) {
