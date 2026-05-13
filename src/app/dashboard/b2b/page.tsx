@@ -349,6 +349,7 @@ export default function B2BDashboardPage() {
       let lastProdDate = '';
       let lastSktDate = '';
       let lastLoadingDate = '';
+      let lastBatchNo = '';
 
       const items: any[] = [];
 
@@ -385,6 +386,9 @@ export default function B2BDashboardPage() {
         const lDate = parseExcelDate(row[5]);
         if (lDate) lastLoadingDate = lDate;
 
+        const bNo = (row[7] ? String(row[7]).trim() : '') || (row[14] ? String(row[14]).trim() : '');
+        if (bNo && bNo.includes('-')) lastBatchNo = bNo;
+
         items.push({
           vehicleCode: lastVehicle || rawVehicle,
           orderCode: rawOrder,
@@ -394,7 +398,7 @@ export default function B2BDashboardPage() {
           loadingDate: lDate || lastLoadingDate,
           productionDate: pDate || lastProdDate,
           sktDate: sDate || lastSktDate,
-          batchNo: row[7] ? String(row[7]).trim() : '',
+          batchNo: bNo || lastBatchNo,
           destination: row[6] ? String(row[6]).trim() : '',
           englishName: "Mutlukal Wheat Tortilla"
         });
