@@ -202,7 +202,9 @@ export default function B2BDashboardPage() {
 
         // Phase 1: tüm CSV'ler bu gruptaki dosyalar
         const p1Main = groupFiles[0]; // ana = ilk (boyuta göre de sıralanabilir ama fark az)
-        const p1Url = await uploadFileDirectly(p1Main.file, p1Main.file.name);
+        // Gruptaki TÜM dosyaları buluta yükle
+        const p1Urls = await Promise.all(groupFiles.map(f => uploadFileDirectly(f.file, f.file.name)));
+        const p1Url = p1Urls[0];
         const p1AllNames = groupFiles.map(f => f.file.name);
 
         // Phase 2 çapraz eşleştirme
@@ -211,6 +213,8 @@ export default function B2BDashboardPage() {
         let p2FileName: string | null = null;
         let p2AllFiles: string | null = null;
         if (p2Result) {
+          // Gruptaki TÜM şablon alt-dosyalarını buluta yükle
+          await Promise.all(p2Result.all.map(f => uploadFileDirectly(f.file, f.file.name)));
           p2Url = await uploadFileDirectly(p2Result.mainFile.file, p2Result.mainFile.file.name);
           p2FileName = p2Result.mainFile.file.name;
           // Tüm parça+tam dosya bilgisini JSON olarak kaydet
@@ -227,6 +231,8 @@ export default function B2BDashboardPage() {
         let p3FileName: string | null = null;
         let p3AllFiles: string | null = null;
         if (p3Result) {
+          // Gruptaki TÜM çıktı alt-dosyalarını buluta yükle
+          await Promise.all(p3Result.all.map(f => uploadFileDirectly(f.file, f.file.name)));
           p3Url = await uploadFileDirectly(p3Result.mainFile.file, p3Result.mainFile.file.name);
           p3FileName = p3Result.mainFile.file.name;
           p3AllFiles = JSON.stringify(p3Result.all.map(f => ({
@@ -242,6 +248,8 @@ export default function B2BDashboardPage() {
         let p4FileName: string | null = null;
         let p4AllFiles: string | null = null;
         if (p4Result) {
+          // Gruptaki TÜM rapor alt-dosyalarını buluta yükle
+          await Promise.all(p4Result.all.map(f => uploadFileDirectly(f.file, f.file.name)));
           p4Url = await uploadFileDirectly(p4Result.mainFile.file, p4Result.mainFile.file.name);
           p4FileName = p4Result.mainFile.file.name;
           p4AllFiles = JSON.stringify(p4Result.all.map(f => ({
