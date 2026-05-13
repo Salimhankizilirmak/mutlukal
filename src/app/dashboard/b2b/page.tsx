@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Briefcase, Plus, FolderKanban, CheckCircle2, Clock, AlertCircle, ArrowRight, Layers, Building2, Tag, Loader2, Upload } from 'lucide-react';
 import Link from 'next/link';
-import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder, importLocalHistoricalBatch } from './actions';
+import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder, importLocalHistoricalBatch, createImportedOrderBatchClient } from './actions';
 
 export default function B2BDashboardPage() {
   const [partners, setPartners] = useState<Array<any>>([]);
@@ -25,6 +25,7 @@ export default function B2BDashboardPage() {
   const [historicalPath, setHistoricalPath] = useState('Karekod İşlemleri/5-Triton - Mayıs');
   const [importingBatch, setImportingBatch] = useState(false);
   const [batchSuccess, setBatchSuccess] = useState('');
+  const [clientScanProgress, setClientScanProgress] = useState('');
 
   const handleBulkHistoricalImport = async () => {
     if (!selectedPartnerId || !historicalPath.trim()) return;
@@ -39,6 +40,106 @@ export default function B2BDashboardPage() {
       setError(err instanceof Error ? err.message : 'Toplu aktarım başarısız oldu.');
     } finally {
       setImportingBatch(false);
+    }
+  };
+
+  const uploadFileDirectly = async (file: File, targetName: string) => {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: targetName, contentType: file.type || 'application/octet-stream' }),
+    });
+    if (!res.ok) throw new Error('Cloud depolama bağlantısı kurulamadı.');
+    const { presignedUrl, publicUrl } = await res.json();
+
+    const uploadRes = await fetch(presignedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+    if (!uploadRes.ok) throw new Error('Dosya buluta yüklenirken hata oluştu.');
+    return publicUrl;
+  };
+
+  const handleClientFolderSelection = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !selectedPartnerId) return;
+
+    setImportingBatch(true);
+    setError('');
+    setBatchSuccess('');
+    setClientScanProgress('Seçilen klasör taranıyor ve dosyalar gruplanıyor...');
+
+    try {
+      // Gruplama mantığı: Aşama 1 dosyalarını sipariş alt klasör ismine göre ayır
+      const groups: Record<string, { phase1?: File; phase3?: File }> = {};
+
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const rel = f.webkitRelativePath || '';
+        if (!rel.endsWith('.csv') && !rel.endsWith('.xlsx') && !rel.endsWith('.xls')) continue;
+
+        // Path yapısı: Örn. "5-Triton - Mayıs/1-Triton-Mayıs-Firmadan Gelen CSV/ZP8-012074/ZP8-012074.csv"
+        const parts = rel.split('/');
+        if (parts.length < 3) continue;
+
+        // Dosyanın hemen üstündeki klasör adı sipariş/grup başlığıdır
+        const subDirName = parts[parts.length - 2];
+        
+        // Aşama 1 mi, Aşama 3 mü olduğunu yoldan anla
+        const isPhase1 = parts.some(p => p.startsWith('1-'));
+        const isPhase3 = parts.some(p => p.startsWith('3-'));
+
+        if (!groups[subDirName]) groups[subDirName] = {};
+
+        if (isPhase1) groups[subDirName].phase1 = f;
+        if (isPhase3) groups[subDirName].phase3 = f;
+      }
+
+      const orderKeys = Object.keys(groups).filter(k => groups[k].phase1);
+      if (orderKeys.length === 0) {
+        throw new Error('Seçilen klasörde 1- ile başlayan alt klasörler veya geçerli CSV/Excel dosyası bulunamadı.');
+      }
+
+      let successCount = 0;
+      for (let idx = 0; idx < orderKeys.length; idx++) {
+        const key = orderKeys[idx];
+        const g = groups[key];
+        if (!g.phase1) continue;
+
+        setClientScanProgress(`Siparişler aktarılıyor (${idx + 1}/${orderKeys.length}): ${key}...`);
+
+        const p1Url = await uploadFileDirectly(g.phase1, g.phase1.name);
+        let p3Url: string | null = null;
+
+        if (g.phase3) {
+          p3Url = await uploadFileDirectly(g.phase3, g.phase3.name);
+        }
+
+        const title = `${key} • ${g.phase1.name.replace(/\.[^/.]+$/, '')}`;
+
+        await createImportedOrderBatchClient({
+          partnerId: selectedPartnerId,
+          brandId: selectedBrandId || undefined,
+          orderName: title.length > 255 ? title.substring(0, 250) : title,
+          phase1FileUrl: p1Url,
+          phase1FileName: g.phase1.name,
+          phase3FileUrl: p3Url,
+          phase3FileName: g.phase3 ? g.phase3.name : null,
+        });
+
+        successCount++;
+      }
+
+      await loadData();
+      setBatchSuccess(`✔ Muhteşem! Tarayıcı üzerinden ${successCount} adet sipariş grubu başarıyla buluta yüklendi ve iş akışına eklendi.`);
+      // Reset input
+      e.target.value = '';
+    } catch (err: any) {
+      setError(err.message || 'Klasör yüklenirken hata oluştu.');
+    } finally {
+      setImportingBatch(false);
+      setClientScanProgress('');
     }
   };
 
@@ -334,26 +435,52 @@ export default function B2BDashboardPage() {
             </p>
           </div>
 
-          <div className="w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
-            <div className="space-y-0.5">
-              <span className="text-[9px] font-bold text-zinc-500 uppercase block">Yerel Klasör Yolu</span>
-              <input
-                type="text"
-                value={historicalPath}
-                onChange={e => setHistoricalPath(e.target.value)}
-                placeholder="Örn: Karekod İşlemleri/5-Triton - Mayıs"
-                className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-amber-100 outline-none focus:border-amber-500/50 w-full sm:w-64 font-mono text-[11px]"
-              />
-            </div>
+          <div className="w-full md:w-auto flex flex-col gap-3 shrink-0 mt-4 md:mt-0">
+            {clientScanProgress && (
+              <div className="text-xs text-amber-300 font-bold bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-xl animate-pulse">
+                {clientScanProgress}
+              </div>
+            )}
 
-            <button
-              onClick={handleBulkHistoricalImport}
-              disabled={importingBatch || !selectedPartnerId || !historicalPath.trim()}
-              className="bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 disabled:opacity-30 text-zinc-950 font-extrabold px-4 py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-950/30 self-end h-[34px]"
-            >
-              {importingBatch ? <Loader2 size={14} className="animate-spin text-zinc-950" /> : <Upload size={14} />}
-              <span>{importingBatch ? 'Taranıyor...' : 'Toplu İçe Aktar'}</span>
-            </button>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              {/* Yöntem A: Tarayıcı Doğrudan Seçim */}
+              <div className="flex-1 relative">
+                <input
+                  type="file"
+                  {...({ webkitdirectory: "", directory: "" } as any)}
+                  multiple
+                  onChange={handleClientFolderSelection}
+                  disabled={importingBatch || !selectedPartnerId}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
+                  id="nativeFolderPicker"
+                />
+                <div className={`w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-extrabold px-4 py-2.5 rounded-xl text-xs transition-all shadow-lg ${importingBatch || !selectedPartnerId ? 'opacity-40' : ''}`}>
+                  {importingBatch ? <Loader2 size={14} className="animate-spin text-zinc-950" /> : <Upload size={14} />}
+                  <span>📁 Tarayıcıdan Klasör Seç (Vercel / S3 Uyumlu)</span>
+                </div>
+              </div>
+
+              {/* Yöntem B: Lokal Sunucu */}
+              <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-xl px-2 py-1">
+                <span className="text-[9px] font-bold text-zinc-500 uppercase block shrink-0">Lokal Yol:</span>
+                <input
+                  type="text"
+                  value={historicalPath}
+                  onChange={e => setHistoricalPath(e.target.value)}
+                  placeholder="Karekod İşlemleri/5-Triton - Mayıs"
+                  className="bg-transparent text-[10px] text-zinc-400 outline-none w-36 font-mono"
+                />
+                <button
+                  onClick={handleBulkHistoricalImport}
+                  disabled={importingBatch || !selectedPartnerId || !historicalPath.trim()}
+                  title="Lokal Sunucu Diskinden Yükle"
+                  className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-zinc-300 font-bold px-2 py-1 rounded-lg text-[10px] transition-colors"
+                >
+                  Aktar
+                </button>
+              </div>
+            </div>
+            {!selectedPartnerId && <p className="text-[10px] text-amber-500/80 text-center">Klasör aktarımı için yukarıdan Partner Firma seçimi zorunludur.</p>}
           </div>
         </div>
       </div>

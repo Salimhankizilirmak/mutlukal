@@ -220,3 +220,33 @@ export async function importLocalHistoricalBatch(partnerId: string, brandId?: st
   return importedCount;
 }
 
+export async function createImportedOrderBatchClient(data: {
+  partnerId: string;
+  brandId?: string;
+  orderName: string;
+  phase1FileUrl: string;
+  phase1FileName: string;
+  phase3FileUrl?: string | null;
+  phase3FileName?: string | null;
+}) {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+
+  const statusVal = data.phase3FileUrl ? 'phase4_pending' : 'phase2_pending';
+
+  const [order] = await db.insert(b2bOrders).values({
+    partnerId: data.partnerId,
+    brandId: data.brandId || null,
+    orderName: data.orderName,
+    phase1FileUrl: data.phase1FileUrl,
+    phase1FileName: data.phase1FileName,
+    phase3FileUrl: data.phase3FileUrl || null,
+    phase3FileName: data.phase3FileName || null,
+    status: statusVal as any,
+    orgId: context.factoryId,
+  }).returning();
+
+  revalidatePath('/dashboard/b2b');
+  return order;
+}
+
