@@ -109,11 +109,11 @@ export async function POST(req: Request) {
             }, { status: 500 });
           }
 
-          log('Warning: Running locally on Windows. Persisting file locally as a development fallback.');
+          log('Warning: Running locally. Persisting file locally as a development fallback.');
           const uploadDir = path.join(process.cwd(), 'public', 'b2b-uploads', context.factoryId);
-          await fs.promises.mkdir(uploadDir, { recursive: true }).catch(() => {});
+          await fs.promises.mkdir(uploadDir, { recursive: true });
           const safeName = `${Date.now()}_${filename}`;
-          await fs.promises.writeFile(path.join(uploadDir, safeName), buffer).catch(() => {});
+          await fs.promises.writeFile(path.join(uploadDir, safeName), buffer);
           publicUrl = `/b2b-uploads/${context.factoryId}/${safeName}`;
           log(`Fallback local URL configured: ${publicUrl}`);
         }
