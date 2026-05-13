@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Briefcase, Plus, FolderKanban, CheckCircle2, Clock, AlertCircle, ArrowRight, Layers, Building2, Tag, Loader2, Upload, Search, Filter, Calendar } from 'lucide-react';
+import { Briefcase, Plus, FolderKanban, CheckCircle2, AlertCircle, Layers, Building2, Tag, Loader2, Upload, Search, Filter, Calendar } from 'lucide-react';
 import Link from 'next/link';
 import { getPartners, createPartner, getBrands, createBrand, getOrders, createOrder, importLocalHistoricalBatch, createImportedOrderBatchClient, deleteOrder, deleteAllOrders } from './actions';
 
@@ -375,21 +375,6 @@ export default function B2BDashboardPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <span className="flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase"><CheckCircle2 size={12} /> Tamamlandı</span>;
-      case 'phase4_pending':
-        return <span className="flex items-center gap-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase"><Clock size={12} /> Aşama 4 Bekliyor</span>;
-      case 'phase3_pending':
-        return <span className="flex items-center gap-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase"><Clock size={12} /> Aşama 3 Bekliyor</span>;
-      case 'phase2_pending':
-        return <span className="flex items-center gap-1 bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase"><Clock size={12} /> Aşama 2 Bekliyor</span>;
-      default:
-        return <span className="flex items-center gap-1 bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase"><Clock size={12} /> Aşama 1 Bekliyor</span>;
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -737,7 +722,7 @@ export default function B2BDashboardPage() {
           })()
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-5">
           {(() => {
             const filteredOrders = orders.filter(item => {
               const { order, partnerName, brandName } = item;
@@ -766,7 +751,16 @@ export default function B2BDashboardPage() {
               return true;
             });
 
-            if (filteredOrders.length === 0 && orders.length > 0) {
+            // Gelişmiş Kullanıcı Dostu Sıralama: Tamamlananlar en alta, devam eden işler en üste
+            const sortedOrders = [...filteredOrders].sort((a, b) => {
+              const aDone = a.order.status === 'Tamamlandı' || !!a.order.phase4FileUrl;
+              const bDone = b.order.status === 'Tamamlandı' || !!b.order.phase4FileUrl;
+              if (aDone && !bDone) return 1;
+              if (!aDone && bDone) return -1;
+              return new Date(b.order.createdAt).getTime() - new Date(a.order.createdAt).getTime();
+            });
+
+            if (sortedOrders.length === 0 && orders.length > 0) {
               return (
                 <div className="col-span-full py-8 text-center text-zinc-500 text-xs italic">
                   Arama ve filtreleme kriterlerinize uygun sipariş iş akışı bulunamadı.
@@ -774,153 +768,146 @@ export default function B2BDashboardPage() {
               );
             }
 
-            return filteredOrders.map(({ order, partnerName, brandName }) => (
-            <Link
-              key={order.id}
-              href={`/dashboard/b2b/${order.id}`}
-              className="group bg-zinc-950/80 border border-zinc-800/80 hover:border-indigo-500/40 rounded-2xl p-4 transition-all duration-300 block space-y-3 shadow-md relative"
-            >
-              {/* Header: partner + badge + status */}
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-indigo-400">{partnerName}</span>
-                    {brandName && (
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-medium">
-                        {brandName}
-                      </span>
-                    )}
+            return sortedOrders.map(({ order, partnerName, brandName }) => {
+              const isFullyDone = order.status === 'Tamamlandı' || !!order.phase4FileUrl;
+              return (
+                <div
+                  key={order.id}
+                  className={`bg-zinc-950/90 border ${isFullyDone ? 'border-zinc-800/60 opacity-80' : 'border-indigo-500/40 shadow-xl shadow-indigo-950/20'} rounded-3xl p-5 sm:p-6 transition-all duration-300 block space-y-4`}
+                >
+                  {/* Üst Başlık ve Firma Tanımı */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-900 pb-4">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="bg-zinc-900 text-indigo-400 font-extrabold px-3 py-1 rounded-xl text-xs border border-zinc-800">
+                          🏢 {partnerName}
+                        </span>
+                        {brandName && (
+                          <span className="bg-purple-950/40 text-purple-300 font-bold px-3 py-1 rounded-xl text-xs border border-purple-900/40">
+                            🏷️ {brandName}
+                          </span>
+                        )}
+                        {isFullyDone ? (
+                          <span className="bg-emerald-500/10 text-emerald-400 font-bold px-2.5 py-0.5 rounded text-xs border border-emerald-500/20">
+                            ✓ İşlem Bitti
+                          </span>
+                        ) : (
+                          <span className="bg-amber-500/10 text-amber-400 font-bold px-2.5 py-0.5 rounded text-xs border border-amber-500/20 animate-pulse">
+                            ⏳ İşlemde
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="text-lg font-black text-white mt-2.5 break-words tracking-tight">
+                        {order.orderName}
+                      </h3>
+                    </div>
+                    <span className="text-xs text-zinc-500 shrink-0 sm:self-start mt-1 sm:mt-0 font-medium">
+                      Oluşturulma: {new Date(order.createdAt).toLocaleDateString('tr-TR')}
+                    </span>
                   </div>
-                  <h3 className="text-sm font-bold text-zinc-200 mt-1 group-hover:text-white transition-colors break-words">
-                    {order.orderName}
-                  </h3>
-                </div>
-                <div className="shrink-0 mt-0.5">
-                  {getStatusBadge(order.status)}
-                </div>
-              </div>
 
-              {/* Phase file details */}
-              <div className="space-y-1.5 text-[11px]">
-                {/* Phase 1 */}
-                <div className="flex gap-2">
-                  <span className="shrink-0 w-5 h-5 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-[9px]">1</span>
-                  <div className="min-w-0">
-                    {order.phase1AllFiles ? (
-                      (() => {
-                        const names: string[] = JSON.parse(order.phase1AllFiles);
-                        return (
-                          <div className="text-zinc-400 space-y-0.5">
-                            {names.map((n: string) => (
-                              <div key={n} className="truncate font-mono text-[10px]">📄 {n}</div>
-                            ))}
-                          </div>
-                        );
-                      })()
-                    ) : (
-                      <span className="text-zinc-500 italic">Gelen CSV yok</span>
-                    )}
+                  {/* Basit ve Herkesin Anlayacağı Dosyalar Listesi */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
+                    
+                    {/* Aşama 1 */}
+                    <div className="p-3.5 rounded-2xl bg-zinc-900/50 border border-zinc-800/80 space-y-2">
+                      <p className="text-xs font-black text-emerald-400">1. Aşama: Gelen Sipariş Dosyası (CSV)</p>
+                      {order.phase1AllFiles ? (
+                        <div className="space-y-1.5 pt-1 max-h-40 overflow-y-auto pr-1">
+                          {JSON.parse(order.phase1AllFiles).map((fn: string) => (
+                            <div key={fn} className="font-mono text-zinc-300 bg-zinc-950 px-2.5 py-1.5 rounded-xl border border-zinc-900 text-xs flex items-center justify-between gap-2">
+                              <span className="truncate">📄 {fn}</span>
+                              <span className="text-[10px] text-emerald-500 font-bold shrink-0 bg-emerald-500/10 px-1.5 py-0.5 rounded">Yüklendi</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-zinc-600 text-xs italic pt-1">Henüz gelen sipariş dosyası aktarılmadı.</p>
+                      )}
+                    </div>
+
+                    {/* Aşama 2 */}
+                    <div className="p-3.5 rounded-2xl bg-zinc-900/50 border border-zinc-800/80 space-y-2">
+                      <p className="text-xs font-black text-purple-400">2. Aşama: Üretim Hattı / Makine Çıktıları</p>
+                      {order.phase2AllFiles ? (
+                        <div className="space-y-1.5 pt-1 max-h-40 overflow-y-auto pr-1">
+                          {(() => {
+                            const fArr: {name: string}[] = JSON.parse(order.phase2AllFiles);
+                            return fArr.map(fObj => (
+                              <div key={fObj.name} className="font-mono text-zinc-300 bg-zinc-950 px-2.5 py-1.5 rounded-xl border border-zinc-900 text-xs flex items-center justify-between gap-2">
+                                <span className="truncate">⚙️ {fObj.name.split(',')[0]}</span>
+                                <span className="text-[10px] text-purple-400 font-bold shrink-0 bg-purple-500/10 px-1.5 py-0.5 rounded">Eklendi</span>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      ) : (
+                        <p className="text-zinc-600 text-xs italic pt-1">Hat makinesinden gelen kayıt bekleniyor.</p>
+                      )}
+                    </div>
+
+                    {/* Aşama 3 */}
+                    <div className="p-3.5 rounded-2xl bg-zinc-900/50 border border-zinc-800/80 space-y-2">
+                      <p className="text-xs font-black text-blue-400">3. Aşama: El Terminali Okuma Dosyaları</p>
+                      {order.phase3AllFiles ? (
+                        <div className="space-y-1.5 pt-1 max-h-40 overflow-y-auto pr-1">
+                          {(() => {
+                            const fArr: {name: string}[] = JSON.parse(order.phase3AllFiles);
+                            return fArr.map(fObj => (
+                              <div key={fObj.name} className="font-mono text-zinc-300 bg-zinc-950 px-2.5 py-1.5 rounded-xl border border-zinc-900 text-xs flex items-center justify-between gap-2">
+                                <span className="truncate">📱 {fObj.name.split(',')[0]}</span>
+                                <span className="text-[10px] text-blue-400 font-bold shrink-0 bg-blue-500/10 px-1.5 py-0.5 rounded">Eklendi</span>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      ) : (
+                        <p className="text-zinc-600 text-xs italic pt-1">Terminal/cihaz verisi bekleniyor.</p>
+                      )}
+                    </div>
+
+                    {/* Aşama 4 */}
+                    <div className="p-3.5 rounded-2xl bg-zinc-900/50 border border-zinc-800/80 space-y-2">
+                      <p className="text-xs font-black text-amber-400">4. Aşama: Oluşturulan Nihai Rapor</p>
+                      {order.phase4AllFiles ? (
+                        <div className="space-y-1.5 pt-1 max-h-40 overflow-y-auto pr-1">
+                          {(() => {
+                            const fArr: {name: string}[] = JSON.parse(order.phase4AllFiles);
+                            return fArr.map(fObj => (
+                              <div key={fObj.name} className="font-mono text-zinc-300 bg-zinc-950 px-2.5 py-1.5 rounded-xl border border-zinc-900 text-xs flex items-center justify-between gap-2">
+                                <span className="truncate">📦 {fObj.name}</span>
+                                <span className="text-[10px] text-amber-400 font-bold shrink-0 bg-amber-500/10 px-1.5 py-0.5 rounded">Hazır</span>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      ) : (
+                        <p className="text-zinc-600 text-xs italic pt-1">Henüz barkod eşleştirmesi ve nihai rapor üretilmedi.</p>
+                      )}
+                    </div>
+
+                  </div>
+
+                  {/* Operasyon ve Aksiyon Çubuğu */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-zinc-900/80">
+                    <button
+                      onClick={(e) => handleDeleteSingleOrder(e, order.id)}
+                      className="text-zinc-500 hover:text-rose-400 font-bold text-xs text-left sm:text-center transition-colors py-1 outline-none"
+                      title="Bu iş akışını kalıcı olarak sil"
+                    >
+                      Siparişi Tamamen Sil
+                    </button>
+                    
+                    <Link
+                      href={`/dashboard/b2b/${order.id}`}
+                      className="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-6 py-3.5 rounded-xl text-xs transition-all text-center shadow-lg shadow-indigo-950/50 hover:scale-[1.01]"
+                    >
+                      👉 Bu Siparişi Yönet & Dosyaları Önizle
+                    </Link>
                   </div>
                 </div>
-
-                {/* Phase 2 */}
-                <div className="flex gap-2">
-                  <span className={`shrink-0 w-5 h-5 rounded flex items-center justify-center font-bold text-[9px] ${order.phase2FileUrl ? 'bg-purple-500/20 text-purple-400' : 'bg-zinc-800 text-zinc-600'}`}>2</span>
-                  <div className="min-w-0">
-                    {order.phase2AllFiles ? (
-                      (() => {
-                        const files: {name: string; size: number; isPart: boolean}[] = JSON.parse(order.phase2AllFiles);
-                        const main = files.find(f => !f.isPart) || files[0];
-                        const parts = files.filter(f => f !== main);
-                        return (
-                          <div className="text-zinc-400 space-y-0.5">
-                            <div className="truncate font-mono text-[10px] text-purple-300">✅ {main.name}</div>
-                            {parts.length > 0 && (
-                              <div className="text-zinc-500 text-[10px]">+ {parts.length} parça: {parts.map(p => p.name.split(',')[0]).join(', ')}</div>
-                            )}
-                          </div>
-                        );
-                      })()
-                    ) : (
-                      <span className="text-zinc-600 italic">Makine xlsx bekleniyor</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Phase 3 */}
-                <div className="flex gap-2">
-                  <span className={`shrink-0 w-5 h-5 rounded flex items-center justify-center font-bold text-[9px] ${order.phase3FileUrl ? 'bg-blue-500/20 text-blue-400' : 'bg-zinc-800 text-zinc-600'}`}>3</span>
-                  <div className="min-w-0">
-                    {order.phase3AllFiles ? (
-                      (() => {
-                        const files: {name: string; size: number; isPart: boolean}[] = JSON.parse(order.phase3AllFiles);
-                        const main = files.find(f => !f.isPart) || files[0];
-                        const parts = files.filter(f => f !== main);
-                        return (
-                          <div className="text-zinc-400 space-y-0.5">
-                            <div className="truncate font-mono text-[10px] text-blue-300">✅ {main.name}</div>
-                            {parts.length > 0 && (
-                              <div className="text-zinc-500 text-[10px]">+ {parts.length} parça: {parts.map(p => p.name.split(',')[0]).join(', ')}</div>
-                            )}
-                          </div>
-                        );
-                      })()
-                    ) : (
-                      <span className="text-zinc-600 italic">Cihaz çıktısı bekleniyor</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Phase 4 */}
-                <div className="flex gap-2">
-                  <span className={`shrink-0 w-5 h-5 rounded flex items-center justify-center font-bold text-[9px] ${order.phase4FileUrl ? 'bg-amber-500/20 text-amber-400' : 'bg-zinc-800 text-zinc-600'}`}>4</span>
-                  <div className="min-w-0">
-                    {order.phase4AllFiles ? (
-                      (() => {
-                        const files: {name: string; size: number; isPart: boolean}[] = JSON.parse(order.phase4AllFiles);
-                        const main = files.find(f => !f.isPart) || files[0];
-                        const parts = files.filter(f => f !== main);
-                        return (
-                          <div className="text-zinc-400 space-y-0.5">
-                            <div className="truncate font-mono text-[10px] text-amber-300">✅ {main.name}</div>
-                            {parts.length > 0 && (
-                              <div className="text-zinc-500 text-[10px]">+ {parts.length} dosya daha</div>
-                            )}
-                          </div>
-                        );
-                      })()
-                    ) : (
-                      <span className="text-zinc-600 italic">Nihai rapor bekleniyor</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              <div className="grid grid-cols-4 gap-1">
-                <div className={`h-1 rounded-full ${order.phase1FileUrl ? 'bg-emerald-500' : 'bg-zinc-800'}`}></div>
-                <div className={`h-1 rounded-full ${order.phase2FileUrl ? 'bg-purple-500' : 'bg-zinc-800'}`}></div>
-                <div className={`h-1 rounded-full ${order.phase3FileUrl ? 'bg-blue-500' : 'bg-zinc-800'}`}></div>
-                <div className={`h-1 rounded-full ${order.phase4FileUrl ? 'bg-amber-500' : 'bg-zinc-800'}`}></div>
-              </div>
-
-              <div className="flex items-center justify-between text-[11px] text-zinc-500">
-                <span>Son Güncelleme: {new Date(order.updatedAt || order.createdAt).toLocaleDateString('tr-TR')}</span>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={(e) => handleDeleteSingleOrder(e, order.id)}
-                    className="text-zinc-600 hover:text-rose-400 transition-colors"
-                    title="Bu iş akışını sil"
-                  >
-                    Sil
-                  </button>
-                  <span className="flex items-center gap-1 text-indigo-400 font-bold group-hover:translate-x-1 transition-transform">
-                    Yönet <ArrowRight size={12} />
-                  </span>
-                </div>
-              </div>
-            </Link>
-          ));
+              );
+            });
         })()}
 
           {orders.length === 0 && (
