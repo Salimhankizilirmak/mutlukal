@@ -1,0 +1,51 @@
+TEKNİK AÇIKLAMA / ТЕХНИЧЕСКОЕ ОПИСАНИЕ
+
+BU BELGE RUSYA FEDERASYONU'NA GÖNDERİLECEK ÜRÜNLERİN ÜZERİNDEKİ KAREKOD (DATA MATRIX) YAPISINI VE CSV DOSYA FORMATINI AÇIKLAMAKTADIR.
+
+1. DOSYA FORMATI (FILE FORMAT)
+- Dosya Türü: CSV (Tab-separated)
+- Karakter Kodlaması: UTF-8 (BOM'lu)
+- Ayraç: Sekme (Tab) karakteri (\t)
+- Sütunlar:
+    1. Sütun: Ürün Karekodu (Product GS1 Data Matrix)
+    2. Sütun: Koli Kodu (Case SSCC Code)
+
+2. KAREKOD YAPISI (DATA MATRIX STRUCTURE - CHESTNY ZNAK)
+Dosyada bulunan 85 karakterlik kodlar GS1 standartlarına uygun Chestny ZNAK (Честный ЗНАК) formatındadır.
+
+Örnek Parçalama:
+01 [GTIN] 21 [SERİ NUMARASI] <GS> 91 [ANAHTAR ID] <GS> 92 [KRİPTO İMZA]
+
+Teknik Detaylar:
+- AI 01 (GTIN): İlk 16 hane. "01" uygulama tanımlayıcısı ile başlar ve 14 haneli GTIN numarasını içerir.
+- AI 21 (Serial Number): Ürünün benzersiz seri numarasıdır. "21" ile başlar. Genellikle 13 karakter uzunluğundadır.
+- <GS> (Group Separator): Kodun içinde görünen boşluk veya özel karakter, ASCII 29 (decimal) değerindeki "Grup Ayracı"dır. Değişken uzunluklu alanların bittiğini gösterir.
+- AI 91 (Key ID): Doğrulama anahtarını temsil eder. "91" ile başlar.
+- AI 92 (Crypto Signature): Kodun güvenliğini sağlayan kriptografik imzadır. "92" ile başlar ve genellikle 44 karakterdir.
+
+--------------------------------------------------
+
+ТЕХНИЧЕСКОЕ ОПИСАНИЕ
+
+ДАННЫЙ ДОКУМЕНТ ОПИСЫВАЕТ СТРУКТУРУ КОДОВ МАРКИРОВКИ (DATA MATRIX) И ФОРМАТ CSV ФАЙЛОВ ДЛЯ ЭКСПОРТА В РОССИЙСКУЮ ФЕДЕРАЦИЮ.
+
+1. ФОРМАТ ФАЙЛА
+- Тип файла: CSV (разделитель табуляция)
+- Кодировка: UTF-8 (с BOM)
+- Разделитель: Символ табуляции (\t)
+- Столбцы:
+    1. Столбец: Код маркировки единицы товара (Data Matrix)
+    2. Столбец: Код транспортной упаковки (SSCC)
+
+2. СТРУКТУРА КОДА МАРКИРОВКИ (CHESTNY ZNAK)
+Коды в файле соответствуют стандарту GS1 и требованиям системы «Честный ЗНАК».
+
+Разбор кода:
+01 [GTIN] 21 [СЕРИЙНЫЙ НОМЕР] <GS> 91 [КЛЮЧ] <GS> 92 [КРИПТО-ПОДПИСЬ]
+
+Технические детали:
+- AI 01 (GTIN): Идентификатор применения (01) + 14 цифр GTIN.
+- AI 21 (Серийный номер): Индивидуальный серийный номер товара. Начинается с (21).
+- <GS> (Group Separator): Непечатный символ ASCII 29, используемый для разделения полей переменной длины в стандарте GS1.
+- AI 91: Идентификатор ключа проверки.
+- AI 92 (Криптохвост): Код проверки (криптографическая подпись), обычно состоит из 44 символов.

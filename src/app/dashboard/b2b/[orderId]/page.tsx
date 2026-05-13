@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, CheckCircle2, Upload, RefreshCw, FileText, AlertCircle, Loader2, Sparkles, Eye, X, ChevronDown, Hash } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Upload, RefreshCw, AlertCircle, Loader2, Sparkles, Eye, X, ChevronDown, Hash } from 'lucide-react';
 import Link from 'next/link';
 import * as XLSX from 'xlsx';
 import { getOrderById, updateOrderPhase, clearPhaseFile, getMonthlyMasterList } from '../actions';
@@ -10,17 +10,45 @@ import { generateNextSSCC } from '@/lib/gs1';
 
 const cleanAndFormat = (val: string) => {
   if (!val) return '';
-  let v = String(val).replace(/^[\u200B-\u200D\uFEFF\s]+|[\u200B-\u200D\uFEFF\s]+$/g, '');
+  // Temizleme: BOM, görünmez karakterler ve ayırıcıları uçlardan temizle
+  let v = String(val).replace(/^[\u200B-\u200D\uFEFF\s,;]+|[\u200B-\u200D\uFEFF\s,;]+$/g, '');
+  
   if (/^[\d.]+e[+\-]\d+$/i.test(v)) {
     try { v = BigInt(Math.round(Number(v))).toString(); } catch {}
   }
+  
+  // GS1 AI öneklerini temizle
   if (v.startsWith('(01)')) v = v.substring(4);
   if (v.startsWith('(00)')) v = v.substring(4);
+  
+  // 13 haneli GTIN'leri 14'e tamamla
   if (/^\d{13}$/.test(v)) v = '0' + v;
-  v = v.replace(/\s*91(.{4})\s*92/g, '\u001D91$1\u001D92');
+  
+  // Gelişmiş 91/92 yakalama (Boşluk, virgül veya noktalı virgül ile ayrılmış olsa bile)
+  v = v.replace(/[\s,;]+91(.{4})[\s,;]+92/g, '\u001D91$1\u001D92');
+  v = v.replace(/[\s,;]+91(.{4})92/g, '\u001D91$1\u001D92');
+  
+  // Çift GS karakterlerini ve iç boşlukları temizle
   v = v.replace(/\u001D\u001D/g, '\u001D');
   v = v.replace(/\s/g, '');
+  
+  // Eğer hala virgül kaldıysa (çok sütunlu yapıdan dolayı), bunları birleştir
+  v = v.replace(/,/g, '');
+  
   return v;
+};
+
+const detectSeparator = (text: string) => {
+  const lines = text.split(/\r\n|\r|\n/).slice(0, 10);
+  const counts = { tab: 0, comma: 0, semi: 0 };
+  lines.forEach(line => {
+    counts.tab += (line.match(/\t/g) || []).length;
+    counts.comma += (line.match(/,/g) || []).length;
+    counts.semi += (line.match(/;/g) || []).length;
+  });
+  if (counts.tab > counts.comma && counts.tab > counts.semi) return '\t';
+  if (counts.semi > counts.comma) return ';';
+  return ',';
 };
 
 const safeJsonParse = (str: string | null) => {
@@ -58,6 +86,10 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
   const [activeSSCC, setActiveSSCC] = useState<string>('');
   const [reconcileTargetCount, setReconcileTargetCount] = useState<number>(0);
 
+  // Manual override file states
+  const [phase2ManualFile, setPhase2ManualFile] = useState<File | null>(null);
+  const [phase4ManualFile, setPhase4ManualFile] = useState<File | null>(null);
+
   // Premium File Previewer Modal State
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewTitle, setPreviewTitle] = useState('');
@@ -75,16 +107,6 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       const o = res.order;
       setCustomPhase1Name(o.phase1FileName || `${res.partnerName}_${res.brandName || 'Genel'}_Gelen.csv`);
       setCustomPhase3Name(o.phase3FileName || `${res.partnerName}_${res.brandName || 'Genel'}_Cihazdan_Gelen.xlsx`);
-
-      // Auto-extract target count from Phase 1 filename if exists
-      if (o.phase1FileName) {
-        const parts = o.phase1FileName.split(',');
-        if (parts.length > 2) {
-          const qtyStr = parts[2].replace(' шт.', '').trim();
-          const qtyNum = parseInt(qtyStr);
-          if (!isNaN(qtyNum)) setReconcileTargetCount(qtyNum);
-        }
-      }
     } catch (err: any) {
       setError(err.message || 'Sipariş detayları okunamadı');
     } finally {
@@ -161,8 +183,14 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       const text = await res.text();
       const cleanText = text.startsWith('\ufeff') ? text.slice(1) : text;
       
-      const rows = cleanText.split(/\r?\n/).filter(line => line.trim() !== '');
-      const data = rows.map(row => row.split('\t'));
+      const sep = detectSeparator(cleanText);
+      const rows = cleanText.split(/\r\n|\r|\n/).filter(line => line.trim() !== '');
+      const data = rows.map(row => {
+        const cols = row.split(sep);
+        // Akıllı Birleştirme: Eğer veri bölünmüşse tek hücrede topla ve formatla
+        const rawLine = cols.length > 1 ? cols.join(' ') : cols[0];
+        return [cleanAndFormat(rawLine)];
+      });
 
       const targetWs = XLSX.utils.aoa_to_sheet(data);
       const targetWb = XLSX.utils.book_new();
@@ -197,7 +225,6 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     }
   };
 
-  // Phase 3 Upload Handler
   const handlePhase3Submit = async () => {
     if (!phase3File) return setError('Lütfen 3. Aşama (Cihazdan Alınan) dosyasını seçin.');
     setProcessingPhase(3);
@@ -209,6 +236,42 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       await updateOrderPhase(params.orderId, 3, url, targetName);
       await fetchOrder();
       setSuccess('Aşama 3 dosyası başarıyla buluta yüklendi. Şimdi Rapor oluşturabilirsiniz.');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setProcessingPhase(null);
+    }
+  };
+
+  const handlePhase2ManualSubmit = async () => {
+    if (!phase2ManualFile) return setError('Lütfen yüklenecek XLSX dosyasını seçin.');
+    setProcessingPhase(2);
+    setError('');
+    setSuccess('');
+    try {
+      const url = await uploadToCloud(phase2ManualFile, phase2ManualFile.name);
+      await updateOrderPhase(params.orderId, 2, url, phase2ManualFile.name);
+      await fetchOrder();
+      setSuccess('Aşama 2 (Makine Şablonu) manuel olarak yüklendi.');
+      setPhase2ManualFile(null);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setProcessingPhase(null);
+    }
+  };
+
+  const handlePhase4ManualSubmit = async () => {
+    if (!phase4ManualFile) return setError('Lütfen yüklenecek rapor dosyasını seçin.');
+    setProcessingPhase(4);
+    setError('');
+    setSuccess('');
+    try {
+      const url = await uploadToCloud(phase4ManualFile, phase4ManualFile.name);
+      await updateOrderPhase(params.orderId, 4, url, phase4ManualFile.name);
+      await fetchOrder();
+      setSuccess('Aşama 4 (Nihai Rapor) manuel olarak yüklendi ve iş tamamlandı.');
+      setPhase4ManualFile(null);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -262,18 +325,19 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       const refRes = await fetch(refUrl);
       const refText = await refRes.text();
       const cleanRefText = refText.startsWith('\ufeff') ? refText.slice(1) : refText;
-      const refLines = cleanRefText.split(/\r?\n/).filter(l => l.trim() !== '');
+      const sep = detectSeparator(cleanRefText);
+      const refLines = cleanRefText.split(/\r\n|\r|\n/).filter(l => l.trim() !== '');
 
       const refProds: string[] = [];
       for (const line of refLines) {
-        const firstCol = line.split('\t')[0].trim();
-        if (firstCol.startsWith('01') || firstCol.startsWith('(01)') || firstCol.length >= 13) {
-          refProds.push(firstCol);
-        } else if (refProds.length > 0) {
-          refProds[refProds.length - 1] += " " + firstCol;
+        const cols = line.split(sep);
+        const rawLine = cols.length > 1 ? cols.join(' ') : cols[0];
+        const cleaned = cleanAndFormat(rawLine);
+        if (cleaned) {
+          refProds.push(cleaned);
         }
       }
-      const cleanedRefProds = refProds.map(cleanAndFormat).filter(Boolean);
+      const cleanedRefProds = refProds;
 
       // 4. Reconciliation Logic: Fill missing codes up to targetCount
       const remainingCodes = cleanedRefProds.filter(code => !completedCodes.has(code));
@@ -333,37 +397,13 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
         // ignore
       }
 
-      // Metadata Extraction from Phase 1 Filename (Smarter Fallback)
-      const origParts = o.phase1FileName ? o.phase1FileName.replace(/\.csv$/i, '').split(',').map(p => p.trim()) : [];
-      // parts pattern: [0: Code, 1: GTIN, 2: Qty шт., 3: Russian Name, 4: Date]
-      
-      const p1Gtin = origParts[1] || "08698829380698";
-      const p1QtyStr = origParts[2] || `${reconcileTargetCount} шт.`;
-      const p1Date = origParts[4] || "28.05.2026"; // Extract 28.05.2026 if possible
+      const prodDate = targetItem?.productionDate || "06.05.2026";
+      const sktDate = targetItem?.sktDate || "06.11.2026";
+      const englishName = targetItem?.englishName || "Mutlukal Wheat Tortilla";
+      const targetQtyStr = `${reconcileTargetCount} шт.`;
 
-      const prodDate = targetItem?.productionDate || p1Date;
-      const sktDate = targetItem?.sktDate || (prodDate && prodDate.includes('.') ? (() => {
-        const parts = prodDate.split('.');
-        if (parts.length === 3) {
-          const year = parseInt(parts[2]);
-          const month = parseInt(parts[1]);
-          const day = parseInt(parts[0]);
-          // Add 6 months for SKT
-          let targetMonth = month + 6;
-          let targetYear = year;
-          if (targetMonth > 12) {
-            targetMonth -= 12;
-            targetYear += 1;
-          }
-          return `${String(day).padStart(2, '0')}.${String(targetMonth).padStart(2, '0')}.${targetYear}`;
-        }
-        return "06.11.2026";
-      })() : "06.11.2026");
-
-      const englishName = targetItem?.englishName || (orderData.brandName === 'Tortillas' ? "Mutlukal Wheat Tortilla" : "Mutlukal Brand Product");
-      const targetQtyStr = p1QtyStr.includes('шт') ? p1QtyStr : `${reconcileTargetCount} шт.`;
-
-      const gtin = p1Gtin;
+      const origParts = o.phase1FileName ? o.phase1FileName.replace(/\.csv$/i, '').split(',') : [];
+      const gtin = origParts[1] ? origParts[1].trim() : "08698829380698";
 
       const targetDeliverableName = `${currentOrderCode || o.orderName}, ${gtin}, ${targetQtyStr},  ${englishName}, ${prodDate} ${sktDate}.csv`;
       
@@ -685,15 +725,33 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row items-center gap-3">
                     <button
                       onClick={handlePhase2Generate}
                       disabled={processingPhase === 2 || !o.phase1FileUrl}
-                      className="bg-purple-600 hover:bg-purple-500 disabled:opacity-30 text-white font-bold px-5 py-2 rounded-xl text-xs transition-all flex items-center gap-2 shadow-md"
+                      className="bg-purple-600 hover:bg-purple-500 disabled:opacity-30 text-white font-bold px-5 py-2 rounded-xl text-xs transition-all flex items-center gap-2 shadow-md shrink-0"
                     >
-                      {processingPhase === 2 ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-                      <span>Şablonu Otomatik Üret</span>
+                      {processingPhase === 2 ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      <span>Otonom Şablon Üret</span>
                     </button>
+                    
+                    <div className="h-4 w-[1px] bg-zinc-800 hidden sm:block" />
+                    
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        accept=".xlsx"
+                        onChange={e => setPhase2ManualFile(e.target.files?.[0] || null)}
+                        className="text-[10px] text-zinc-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-zinc-800 file:text-zinc-400 hover:file:bg-zinc-700 max-w-[150px]"
+                      />
+                      <button
+                        onClick={handlePhase2ManualSubmit}
+                        disabled={!phase2ManualFile || processingPhase === 2}
+                        className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-zinc-300 font-bold px-3 py-1.5 rounded-xl text-[10px] transition-all border border-zinc-700"
+                      >
+                        Yükle
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -920,6 +978,24 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
                       {processingPhase === 4 ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                       <span>Eksikleri Tamamla & Raporu Üret</span>
                     </button>
+
+                    <div className="flex items-center gap-3 pt-2 border-t border-indigo-500/10">
+                      <div className="flex items-center gap-2 flex-1">
+                        <input
+                          type="file"
+                          accept=".xlsx,.csv"
+                          onChange={e => setPhase4ManualFile(e.target.files?.[0] || null)}
+                          className="text-[10px] text-zinc-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-zinc-800 file:text-zinc-400 hover:file:bg-zinc-700 w-full"
+                        />
+                        <button
+                          onClick={handlePhase4ManualSubmit}
+                          disabled={!phase4ManualFile || processingPhase === 4}
+                          className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-zinc-300 font-bold px-3 py-1.5 rounded-xl text-[10px] transition-all border border-zinc-700 shrink-0"
+                        >
+                          Hazır Rapor Yükle
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1115,76 +1191,6 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
         </div>
       )}
 
-      {/* ──────────────────────────────────────────────────────────────
-          MANUEL ARŞİV VE ESKİ KAYIT YÜKLEME (OPSİYONEL)
-          ────────────────────────────────────────────────────────────── */}
-      <div className="bg-zinc-950/60 border border-zinc-900 rounded-3xl p-6 sm:p-8 space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-zinc-900 rounded-xl text-zinc-400">
-            <RefreshCw size={20} />
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-white tracking-tight">Eski Kayıt & Manuel Rapor Yükleme</h2>
-            <p className="text-xs text-zinc-500">Hazır raporlarınız veya geçmiş cihaz çıktılarınız varsa buradan doğrudan yükleyebilirsiniz.</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Manuel Aşama 3 */}
-          <div className="p-5 rounded-2xl bg-zinc-900/30 border border-zinc-800 space-y-4">
-            <h3 className="text-xs font-black text-blue-400 uppercase tracking-widest">Aşama 3: Cihaz Çıktısı (XLSX/CSV)</h3>
-            <div className="relative group">
-              <input
-                type="file"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) {
-                    setProcessingPhase(3);
-                    uploadToCloud(f, f.name).then(url => {
-                      updateOrderPhase(params.orderId, 3, url, f.name).then(() => {
-                        fetchOrder().then(() => setProcessingPhase(null));
-                      });
-                    });
-                  }
-                }}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
-              <div className="flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 py-3 rounded-xl text-xs font-bold transition-all border border-dashed border-zinc-700">
-                <Upload size={14} />
-                <span>Eski Cihaz Çıktısını Yükle</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Manuel Aşama 4 */}
-          <div className="p-5 rounded-2xl bg-zinc-900/30 border border-zinc-800 space-y-4">
-            <h3 className="text-xs font-black text-amber-400 uppercase tracking-widest">Aşama 4: Nihai Rapor (CSV)</h3>
-            <div className="relative group">
-              <input
-                type="file"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) {
-                    setProcessingPhase(4);
-                    uploadToCloud(f, f.name).then(url => {
-                      updateOrderPhase(params.orderId, 4, url, f.name).then(() => {
-                        fetchOrder().then(() => setProcessingPhase(null));
-                      });
-                    });
-                  }
-                }}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
-              <div className="flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 py-3 rounded-xl text-xs font-bold transition-all border border-dashed border-zinc-700">
-                <Upload size={14} />
-                <span>Hazır Nihai Raporu Yükle</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="h-20" />
     </div>
   );
 }
