@@ -8,9 +8,9 @@ import { join } from 'path';
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization');
   if (!authHeader) return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 });
-  const pinCode = authHeader.replace('Bearer ', '');
+  const secret = authHeader.replace('Bearer ', '').trim();
 
-  const device = await db.select().from(devices).where(eq(devices.pinCode, pinCode)).limit(1);
+  const device = await db.select().from(devices).where(eq(devices.deviceSecret, secret)).limit(1);
   if (!device.length) return NextResponse.json({ error: 'Geçersiz cihaz' }, { status: 401 });
 
   // Bu cihaza atanmış, şablonu hazır ama henüz raporu YÜKLENMEMİŞ ilk B2B siparişini bul
@@ -36,13 +36,13 @@ export async function GET(req: Request) {
 // Ajan rapor gönderdiğinde (Yerel Dosya Sistemine Kayıt)
 export async function POST(req: Request) {
   const formData = await req.formData();
-  const pinCode = formData.get('deviceSecret') as string;
+  const secret = formData.get('deviceSecret') as string;
   const taskId = formData.get('taskId') as string;
   const file = formData.get('report') as File;
 
-  if (!pinCode || !taskId || !file) return NextResponse.json({ error: 'Eksik veri' }, { status: 400 });
+  if (!secret || !taskId || !file) return NextResponse.json({ error: 'Eksik veri' }, { status: 400 });
 
-  const device = await db.select().from(devices).where(eq(devices.pinCode, pinCode)).limit(1);
+  const device = await db.select().from(devices).where(eq(devices.deviceSecret, secret)).limit(1);
   if (!device.length) return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 });
 
   const bytes = await file.arrayBuffer();
