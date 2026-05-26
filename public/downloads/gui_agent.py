@@ -6,9 +6,9 @@ import json
 import threading
 
 # --- AYARLAR ---
-API_URL = "https://mutlukal.novexistech.com/api/agent"
-API_TASK_URL = "https://mutlukal.novexistech.com/api/agent/task"
-API_AUTH_URL = "https://mutlukal.novexistech.com/api/agent/auth"
+API_URL = "http://localhost:3000/api/agent/task"
+API_TASK_URL = "http://localhost:3000/api/agent/task"
+API_AUTH_URL = "http://localhost:3000/api/agent/auth"
 
 # Masaüstü yolunu güvenle bul
 DESKTOP = os.path.join(os.path.expanduser("~"), "Desktop")
@@ -90,6 +90,7 @@ class SetupWindow(ctk.CTkToplevel):
                     config = {
                         "deviceId": data["id"],
                         "deviceSecret": data["deviceSecret"],
+                        "pinCode": pin,
                         "deviceName": data["name"]
                     }
                     save_config(config)
@@ -115,6 +116,8 @@ class LavasAgent(ctk.CTk):
 
         self.config = None
         self.current_batch_id = None
+        self.current_task_id = None
+        self.device_secret = None
 
         self.setup_ui()
         self.after(300, self.check_auth)
@@ -193,6 +196,7 @@ class LavasAgent(ctk.CTk):
         self.lbl_device.configure(text=f"📟  {config['deviceName']}")
         self.lbl_status.configure(text="🟢  SİSTEME BAĞLI", text_color="#10b981")
         self.log(f"Cihaz: {config['deviceName']} - Bağlantı başarılı.")
+        self.device_secret = config.get("pinCode") or config.get("deviceSecret")
 
     def download_task(self):
         if not self.config:
@@ -206,12 +210,13 @@ class LavasAgent(ctk.CTk):
         def do_download():
             try:
                 res = requests.get(API_TASK_URL,
-                                   headers={"Authorization": f"Bearer {self.config['deviceSecret']}"},
+                                   headers={"Authorization": f"Bearer {self.device_secret}"},
                                    timeout=15)
                 if res.status_code == 200:
                     data = res.json()
                     if data.get("downloadUrl"):
-                        self.current_batch_id = data.get("id")
+                        self.current_task_id = data.get("taskId")
+                        self.current_batch_id = data.get("taskId") # fallback
                         file_name = data.get("fileName", f"{data.get('workOrderNo', 'isemri')}.xlsx")
                         save_path = os.path.join(IS_EMRI_DIR, file_name)
 
@@ -248,7 +253,9 @@ class LavasAgent(ctk.CTk):
         if not self.config:
             messagebox.showwarning("Uyarı", "Önce cihaz kaydı yapmalısınız.")
             return
-        if not self.current_batch_id:
+        
+        active_task_id = self.current_task_id or self.current_batch_id
+        if not active_task_id:
             messagebox.showwarning("Uyarı", "Önce bir iş emri indirmelisiniz.")
             return
 
@@ -262,26 +269,35 @@ class LavasAgent(ctk.CTk):
 
         file_name = os.path.basename(file_path)
         self.log(f"Rapor gönderiliyor: {file_name}")
+        self.btn_report.configure(state="disabled", text="⏳  Gönderiliyor...")
 
         def do_upload():
             try:
+                self.after(0, lambda: self.log("Rapor sunucuya yükleniyor..."))
                 with open(file_path, "rb") as f:
-                    res = requests.post(API_URL, json={
-                        "action": "upload_report",
-                        "deviceSecret": self.config["deviceSecret"],
-                        "batchId": self.current_batch_id,
-                        "fileName": file_name
-                    }, timeout=30)
-
-                if res.status_code == 200:
-                    self.after(0, lambda: messagebox.showinfo("Başarılı", f"'{file_name}' merkeze iletildi!\nİş emri Tamamlandı olarak işaretlendi."))
+                    res = requests.post(
+                        API_URL,
+                        files={"report": (file_name, f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                        data={
+                            "deviceSecret": self.device_secret,
+                            "taskId": active_task_id
+                        },
+                        timeout=60
+                    )
+                
+                if res.status_code == 200 and res.json().get("success"):
+                    self.after(0, lambda: messagebox.showinfo("Başarılı", f"'{file_name}' merkeze iletildi!"))
                     self.after(0, lambda: self.log(f"Rapor iletildi: {file_name}"))
                     self.after(0, lambda: self.lbl_status.configure(text="🟢  RAPOR GÖNDERİLDİ", text_color="#10b981"))
+                    self.current_task_id = None
                     self.current_batch_id = None
                 else:
-                    self.after(0, lambda: messagebox.showerror("Hata", f"Sunucu hatası: {res.status_code}"))
+                    msg = res.json().get("error", "Sunucu raporu onaylamadı.")
+                    self.after(0, lambda: messagebox.showerror("Hata", msg))
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror("Bağlantı Hatası", str(e)))
+                self.after(0, lambda: messagebox.showerror("Hata", f"İşlem sırasında hata: {e}"))
+            finally:
+                self.after(0, lambda: self.btn_report.configure(state="normal", text="📤  RAPORU SEÇ VE GÖNDER"))
 
         threading.Thread(target=do_upload, daemon=True).start()
 

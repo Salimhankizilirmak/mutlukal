@@ -1,11 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState } from 'react';
-import { Scissors, FileMinus, FileCheck, CheckCircle2, AlertCircle, Loader2, Download } from 'lucide-react';
+import { Scissors, FileMinus, FileCheck, CheckCircle2, Loader2 } from 'lucide-react';
 import { FileDropzone } from '@/components/FileDropzone';
-import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import { generateNextSSCC, formatAsKoliSSCC, calculateSSCCCheckDigit } from '@/lib/gs1';
+import { generateNextSSCC, formatAsKoliSSCC } from '@/lib/gs1';
 import JSZip from 'jszip';
 
 export default function GS1ToolsPage() {

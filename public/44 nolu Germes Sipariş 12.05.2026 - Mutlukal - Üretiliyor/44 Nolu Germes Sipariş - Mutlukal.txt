@@ -1,0 +1,4 @@
+mutlukalda üretilecek
+karekodlar çıkarıldı.
+kod dosyaları büyük olduğu için bölünerek Gökhana gönderildi.
+tekrar kod oluştururken birleştirilmesi gerekiyor

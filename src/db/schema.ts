@@ -96,9 +96,23 @@ export const b2bOrders = sqliteTable('b2b_orders', {
   phase3Note: text('phase3_note'),
   phase4Note: text('phase4_note'),
 
+  // Agent (Ajan) Integration columns
+  assignedDeviceId: text('assigned_device_id'),
+  orderCode: text('order_code'),
+  agentFileUrl: text('agent_file_url'),
+  reportFileUrl: text('report_file_url'),
+  clientId: text('client_id'),
+
   status: text('status').default('phase1_pending'), // tracks progress
   createdAt: integer('createdAt', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   updatedAt: integer('updatedAt', { mode: 'timestamp' }),
+});
+
+export const b2bClients = sqliteTable('b2b_clients', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  factoryOwnerId: text('factory_owner_id').notNull(),
+  name: text('name').notNull(), // Örn: Triton, BİM, Migros
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
 
 export const b2bSettings = sqliteTable('b2b_settings', {

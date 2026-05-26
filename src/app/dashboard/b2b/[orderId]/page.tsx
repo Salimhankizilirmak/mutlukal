@@ -6,7 +6,7 @@ import { ArrowLeft, CheckCircle2, Upload, RefreshCw, AlertCircle, Loader2, Spark
 import Link from 'next/link';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
-import { getOrderById, updateOrderPhase, clearPhaseFile, getMonthlyMasterList, sendB2BReportEmail } from '../actions';
+import { getOrderById, updateOrderPhase, clearPhaseFile, getMonthlyMasterList, sendB2BReportEmail, getDevicesForB2B, assignDeviceToB2BOrder } from '../actions';
 import { generateNextSSCC, formatAsKoliSSCC } from '@/lib/gs1';
 
 const cleanAndFormat = (val: string) => {
@@ -64,6 +64,11 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
   const [mailSuccess, setMailSuccess] = useState(false);
   const [downloadingArchive, setDownloadingArchive] = useState(false);
 
+  // Agent states
+  const [devicesList, setDevicesList] = useState<any[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [assigningDevice, setAssigningDevice] = useState(false);
+
   // Phase 1 Custom filename state
   const [customPhase1Name, setCustomPhase1Name] = useState('');
   const [phase1File, setPhase1File] = useState<File | null>(null);
@@ -97,6 +102,19 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       const o = res.order;
       setCustomPhase1Name(o.phase1FileName || `${res.partnerName}_${res.brandName || 'Genel'}_Gelen.csv`);
       setCustomPhase3Name(o.phase3FileName || `${res.partnerName}_${res.brandName || 'Genel'}_Cihazdan_Gelen.xlsx`);
+
+      // Fetch devices for B2B assignment
+      try {
+        const devs = await getDevicesForB2B();
+        setDevicesList(devs);
+        if (devs.length > 0 && !o.assignedDeviceId) {
+          setSelectedDeviceId(devs[0].id);
+        } else if (o.assignedDeviceId) {
+          setSelectedDeviceId(o.assignedDeviceId);
+        }
+      } catch (devErr) {
+        console.error('Error fetching B2B devices:', devErr);
+      }
     } catch (err: any) {
       setError(err.message || 'Sipariş detayları okunamadı');
     } finally {
@@ -273,6 +291,22 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
     }
   };
 
+  const handleAssignDevice = async () => {
+    if (!selectedDeviceId) return setError('Lütfen atanacak bir cihaz seçin.');
+    setAssigningDevice(true);
+    setError('');
+    setSuccess('');
+    try {
+      await assignDeviceToB2BOrder(params.orderId, selectedDeviceId);
+      await fetchOrder();
+      setSuccess('Cihaz ataması başarıyla gerçekleştirildi.');
+    } catch (err: any) {
+      setError(err.message || 'Cihaz atanamadı.');
+    } finally {
+      setAssigningDevice(false);
+    }
+  };
+
   const handlePhase4ManualSubmit = async () => {
     if (!phase4ManualFile) return setError('Lütfen yüklenecek rapor dosyasını seçin.');
     setProcessingPhase(4);
@@ -293,7 +327,7 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
 
   // Phase 4 Deliverables Logic (Eksik Tamamlama / Reconcile)
   const handlePhase4Finalize = async () => {
-    const reportUrl = orderData?.order?.phase3FileUrl;
+    const reportUrl = orderData?.order?.reportFileUrl || orderData?.order?.phase3FileUrl;
     const refUrl = orderData?.order?.phase1FileUrl;
     
     if (!refUrl) return setError('Aşama 1 (Referans) verisi bulunamadı.');
@@ -895,6 +929,45 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
                 )}
               </div>
 
+              {/* Device Assignment UI */}
+              {(o.agentFileUrl || o.phase2FileUrl) && (
+                <div className="mt-4 pt-3 border-t border-purple-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-900/20 p-3 rounded-xl border border-zinc-900">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-zinc-400">Ajan Entegrasyonu:</span>
+                    {o.assignedDeviceId ? (
+                      <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-xl border border-emerald-500/20 flex items-center gap-1.5">
+                        <CheckCircle2 size={12} className="shrink-0" />
+                        Atanan Cihaz: <strong>{devicesList.find(d => d.id === o.assignedDeviceId)?.name || 'Atandı'}</strong>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-zinc-500">Ajana henüz gönderilmedi.</span>
+                    )}
+                  </div>
+                  {!o.assignedDeviceId && (
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={selectedDeviceId}
+                        onChange={(e) => setSelectedDeviceId(e.target.value)}
+                        className="bg-zinc-900 text-zinc-300 text-xs rounded-xl border border-zinc-800 px-3 py-1.5 outline-none focus:border-purple-500/50"
+                      >
+                        <option value="">Cihaz Seçin...</option>
+                        {devicesList.map(dev => (
+                          <option key={dev.id} value={dev.id}>{dev.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={handleAssignDevice}
+                        disabled={assigningDevice || !selectedDeviceId}
+                        className="bg-purple-600 hover:bg-purple-500 disabled:opacity-30 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition-all flex items-center gap-1.5"
+                      >
+                        {assigningDevice ? <Loader2 size={12} className="animate-spin" /> : null}
+                        <span>Cihaza Gönder</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Collapsible Subfiles Drawer */}
               {hasMulti2 && expandedPhase2 && (
                 <div className="mt-4 pt-3 border-t border-purple-500/10 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -927,14 +1000,15 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
         {(() => {
           const files3 = safeJsonParse(o.phase3AllFiles);
           const hasMulti3 = files3.length > 1;
+          const isReportLoaded = !!o.reportFileUrl;
           return (
-            <div className={`p-5 rounded-2xl border transition-all ${o.phase3FileUrl ? 'bg-zinc-950/60 border-blue-500/30' : 'bg-zinc-950 border-zinc-800/80'}`}>
+            <div className={`p-5 rounded-2xl border transition-all ${isReportLoaded ? 'bg-zinc-950/60 border-emerald-500/30' : o.phase3FileUrl ? 'bg-zinc-950/60 border-blue-500/30' : 'bg-zinc-950 border-zinc-800/80'}`}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div 
                   onClick={() => hasMulti3 && setExpandedPhase3(!expandedPhase3)}
                   className={`flex items-center gap-3 ${hasMulti3 ? 'cursor-pointer select-none group' : ''}`}
                 >
-                  <span className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-400 font-extrabold flex items-center justify-center text-xs shrink-0 group-hover:bg-blue-500/20 transition-colors">
+                  <span className={`w-8 h-8 rounded-xl font-extrabold flex items-center justify-center text-xs shrink-0 group-hover:bg-blue-500/20 transition-colors ${isReportLoaded ? 'bg-emerald-500/10 text-emerald-400' : 'bg-blue-500/10 text-blue-400'}`}>
                     3
                   </span>
                   <div>
@@ -945,7 +1019,9 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
                           <ChevronDown size={16} className={`text-blue-400 transition-transform duration-200 ${expandedPhase3 ? 'rotate-180' : ''}`} />
                         )}
                       </h3>
-                      {o.phase3FileUrl ? (
+                      {isReportLoaded ? (
+                        <span className="bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded text-[10px]">Dosya Yüklendi / Rapor Geldi</span>
+                      ) : o.phase3FileUrl ? (
                         <span className="bg-blue-500/10 text-blue-400 font-bold px-2 py-0.5 rounded text-[10px]">Yüklendi</span>
                       ) : (
                         <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">Bekliyor</span>
@@ -954,11 +1030,30 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
                         <span className="bg-zinc-800 text-zinc-400 font-bold px-2 py-0.5 rounded text-[10px]">+{files3.length - 1} Dosya</span>
                       )}
                     </div>
-                    <p className="text-xs text-zinc-500 mt-0.5">Hat cihazından alınan işlenmiş karekod sonuç dosyası</p>
+                    <p className="text-xs text-zinc-500 mt-0.5">Hat cihazından alınan veya ajan tarafından yüklenen işlenmiş karekod sonuç dosyası</p>
                   </div>
                 </div>
 
-                {o.phase3FileUrl ? (
+                {isReportLoaded ? (
+                  <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
+                    <a href={o.reportFileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-emerald-300 hover:underline max-w-[200px] truncate" title={o.reportFileUrl.split('/').pop()}>
+                      📄 {o.reportFileUrl.split('/').pop()}
+                    </a>
+                    <button
+                      onClick={() => handleOpenPreview(o.reportFileUrl, o.reportFileUrl.split('/').pop() || 'rapor.xlsx')}
+                      className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0"
+                    >
+                      <Eye size={14} /> Önizle
+                    </button>
+                    <button
+                      onClick={() => handleClearPhase(3)}
+                      title="Çıktıyı Temizle"
+                      className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : o.phase3FileUrl ? (
                   <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end shrink-0">
                     <a href={o.phase3FileUrl} target="_blank" rel="noreferrer" className="text-xs font-mono text-blue-300 hover:underline max-w-[200px] truncate" title={o.phase3FileName}>
                       📱 {o.phase3FileName}

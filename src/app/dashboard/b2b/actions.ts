@@ -2,7 +2,7 @@
 'use server';
 
 import { db } from '@/db';
-import { b2bPartners, b2bBrands, b2bOrders, b2bSettings } from '@/db/schema';
+import { b2bPartners, b2bBrands, b2bOrders, b2bSettings, devices, b2bClients } from '@/db/schema';
 import { eq, desc, and, like, or } from 'drizzle-orm';
 import { getFactoryContext } from '@/lib/auth-context';
 import { revalidatePath } from 'next/cache';
@@ -69,7 +69,7 @@ export async function getOrders() {
   .orderBy(desc(b2bOrders.createdAt));
 }
 
-export async function createOrder(data: { partnerId: string; brandId?: string; orderName: string }) {
+export async function createOrder(data: { partnerId: string; brandId?: string; orderName: string; clientId?: string }) {
   const context = await getFactoryContext();
   if (!context.factoryId) throw new Error('Yetkisiz');
 
@@ -77,6 +77,7 @@ export async function createOrder(data: { partnerId: string; brandId?: string; o
     partnerId: data.partnerId,
     brandId: data.brandId || null,
     orderName: data.orderName,
+    clientId: data.clientId || null,
     orgId: context.factoryId,
   }).returning();
 
@@ -226,6 +227,7 @@ export async function createImportedOrderBatchClient(data: {
   partnerId: string;
   brandId?: string;
   orderName: string;
+  clientId?: string;
   // Phase 1 — gelen CSV grubu
   phase1FileUrl: string;
   phase1FileName: string;
@@ -256,6 +258,7 @@ export async function createImportedOrderBatchClient(data: {
     partnerId: data.partnerId,
     brandId: data.brandId || null,
     orderName: data.orderName,
+    clientId: data.clientId || null,
     phase1FileUrl: data.phase1FileUrl,
     phase1FileName: data.phase1FileName,
     phase1AllFiles: data.phase1AllFiles || null,
@@ -514,4 +517,71 @@ export async function backupOrderToLocal(orderId: string) {
     path: targetDir, 
     count: downloaded.length 
   };
+}
+
+export async function getDevicesForB2B() {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+  // Fabrikaya ait cihazları getir (getFactoryContext ile entegre)
+  return await db.select().from(devices).where(eq(devices.orgId, context.factoryId));
+}
+
+export async function assignDeviceToB2BOrder(orderId: string, deviceId: string) {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+
+  const [order] = await db.select().from(b2bOrders).where(eq(b2bOrders.id, orderId)).limit(1);
+  if (!order) throw new Error('Sipariş bulunamadı');
+
+  const orderCode = order.orderCode || order.phase1Note || (order.phase1FileName ? order.phase1FileName.split(',')[0].replace('Sablon_', '').replace('.xlsx', '').trim() : '') || 'B2B';
+  const agentFileUrl = order.agentFileUrl || order.phase2FileUrl;
+
+  await db.update(b2bOrders)
+    .set({ 
+      assignedDeviceId: deviceId,
+      orderCode,
+      agentFileUrl
+    })
+    .where(eq(b2bOrders.id, orderId));
+
+  revalidatePath(`/dashboard/b2b/${orderId}`);
+}
+
+export async function createB2BClient(formData: FormData) {
+  const { factoryId } = await getFactoryContext();
+  if (!factoryId) throw new Error('Yetkisiz');
+  const name = formData.get('name') as string;
+  await db.insert(b2bClients).values({ factoryOwnerId: factoryId, name });
+  revalidatePath('/dashboard/b2b');
+}
+
+export async function getB2BClients() {
+  const { factoryId } = await getFactoryContext();
+  if (!factoryId) return [];
+  return await db.select().from(b2bClients).where(eq(b2bClients.factoryOwnerId, factoryId));
+}
+
+export async function getB2BOrdersByClient(clientId: string) {
+  const context = await getFactoryContext();
+  if (!context.factoryId) return [];
+  return await db.select().from(b2bOrders).where(and(eq(b2bOrders.clientId, clientId), eq(b2bOrders.orgId, context.factoryId))).orderBy(desc(b2bOrders.createdAt));
+}
+
+export async function uploadB2BPlan(clientId: string, fileUrl: string, fileName: string, orderName: string, partnerId: string) {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+
+  const [order] = await db.insert(b2bOrders).values({
+    partnerId: partnerId,
+    orderName: orderName,
+    clientId: clientId,
+    phase1FileUrl: fileUrl,
+    phase1FileName: fileName,
+    phase1AllFiles: JSON.stringify([fileName]),
+    status: 'phase2_pending',
+    orgId: context.factoryId,
+  }).returning();
+
+  revalidatePath(`/dashboard/b2b/client/${clientId}`);
+  return order;
 }

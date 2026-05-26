@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useCallback } from 'react';
-import { Smartphone, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Smartphone, FileText } from 'lucide-react';
 import { GS1ToolCard } from '@/components/GS1ToolCard';
 import { FileDropzone } from '@/components/FileDropzone';
 import { QRScanner } from '@/components/QRScanner';
