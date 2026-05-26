@@ -7,7 +7,7 @@ import Link from 'next/link';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { getOrderById, updateOrderPhase, clearPhaseFile, getMonthlyMasterList, sendB2BReportEmail } from '../actions';
-import { generateNextSSCC } from '@/lib/gs1';
+import { generateNextSSCC, formatAsKoliSSCC } from '@/lib/gs1';
 
 const cleanAndFormat = (val: string) => {
   if (!val) return '';
@@ -378,7 +378,8 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
         if (i > 0 && isNewKoli) {
           currentSSCC = generateNextSSCC(currentSSCC);
         }
-        finalLines.push(`${finalProds[i]}\t${currentSSCC}`);
+        const koliBarcode = formatAsKoliSSCC(currentSSCC);
+        finalLines.push(`${finalProds[i]}\t${koliBarcode}`);
       }
 
       // 6. Update global state
@@ -472,8 +473,12 @@ export default function B2BPipelineDetailPage({ params }: { params: { orderId: s
       
       if (lines.length === 0) throw new Error('Rapor içeriği boş veya okunamaz durumda.');
       
-      const firstSSCC = lines[0].split('\t')[1];
-      const lastSSCC = lines[lines.length - 1].split('\t')[1];
+      const firstStateSSCC = lines[0].split('\t')[1];
+      const lastStateSSCC = lines[lines.length - 1].split('\t')[1];
+      // Note: the file contains formatted SSCCs, but if it doesn't we can format it here.
+      // Wait, if the file already contains formatted SSCCs, we should just read them directly!
+      const firstSSCC = firstStateSSCC;
+      const lastSSCC = lastStateSSCC;
       const ssccRange = `${firstSSCC} - ${lastSSCC}`;
 
       const prodDate = targetItem?.productionDate || "06.05.2026";

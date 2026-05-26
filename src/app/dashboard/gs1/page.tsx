@@ -11,6 +11,14 @@ const tools = [
     bg: 'bg-blue-400/10',
   },
   {
+    title: 'Gelişmiş Araçlar (Bölme, Kırpma, Eşleştirme)',
+    description: 'Tek bir sayfada dosyalarınızı bölebilir, kırpabilir veya mükerrer kontrolleriyle güvenle cihaz raporlarınızı birleştirebilirsiniz.',
+    href: '/dashboard/gs1/tools',
+    icon: Scissors,
+    color: 'text-indigo-400',
+    bg: 'bg-indigo-400/10',
+  },
+  {
     title: 'Adet Ayarlama (Subset)',
     description: 'Büyük kod dosyalarını istenen adete göre keser ve koli kodlarını otomatik olarak günceller.',
     href: '/dashboard/gs1/subset',

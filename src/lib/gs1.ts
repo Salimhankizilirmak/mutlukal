@@ -17,4 +17,18 @@ export function generateNextSSCC(lastSSCC: string): string {
   return newPrefix + check.toString();
 }
 
+/**
+ * Converts a raw SSCC state counter (e.g. 0048698829380026627X) 
+ * into our company's valid Box SSCC format (00 + 2 + GLN + 7 digit serial + CheckDigit)
+ */
+export function formatAsKoliSSCC(stateSSCC: string): string {
+  // Extract the 7-digit serial number from the end (before the check digit)
+  const serialPart = stateSSCC.slice(12, 19);
+  const gln = "869882938";
+  const extension = "2";
+  const base = extension + gln + serialPart;
+  const check = calculateSSCCCheckDigit(base);
+  return '00' + base + check;
+}
+
 export const GS_CHAR = '\x1d';

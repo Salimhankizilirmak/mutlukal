@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { FileCode, Loader2, AlertCircle, Hash, ArrowLeft, Download } from 'lucide-react';
 import { GS1ToolCard } from '@/components/GS1ToolCard';
 import { FileDropzone } from '@/components/FileDropzone';
-import { generateNextSSCC } from '@/lib/gs1';
+import { generateNextSSCC, formatAsKoliSSCC } from '@/lib/gs1';
 import Link from 'next/link';
 import * as XLSX from 'xlsx';
 
@@ -101,7 +101,8 @@ export default function GermesConverterPage() {
         if (i > 0 && isNewKoli) {
           currentSSCC = generateNextSSCC(currentSSCC);
         }
-        finalCsvLines.push(`${extractedProds[i]}\t${currentSSCC}`);
+        const koliBarcode = formatAsKoliSSCC(currentSSCC);
+        finalCsvLines.push(`${extractedProds[i]}\t${koliBarcode}`);
       }
 
       // 4. Update global sequence robustly via POST
