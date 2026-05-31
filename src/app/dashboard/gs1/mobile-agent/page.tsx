@@ -26,7 +26,7 @@ export default function MobileAgentPage() {
 
   // Helper to clean codes for comparison
   const normalizeCode = (c: string) => {
-    return c.replace(/\(01\)|\(00\)|\u001d|\s/g, '').replace(/^0+/, '');
+    return c.replace(/[\(\)\s\u001d]/g, '').replace(/^0+/, '');
   };
 
   // Load CSV
