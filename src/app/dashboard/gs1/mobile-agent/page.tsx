@@ -136,7 +136,7 @@ export default function MobileAgentPage() {
             </div>
             
             {/* The QRScanner will constantly invoke onScan, but useCallback + debounce prevents lag */}
-            <QRScanner onScan={handleScan} fps={10} qrbox={250} />
+            <QRScanner onScan={handleScan} fps={20} qrbox={250} />
             
             {/* Result Area */}
             {success && (
