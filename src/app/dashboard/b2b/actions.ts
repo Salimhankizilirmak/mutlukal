@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { sendEmail } from '@/lib/mail';
+import * as XLSX from 'xlsx';
 
 export async function getPartners() {
   const context = await getFactoryContext();
@@ -585,3 +586,191 @@ export async function uploadB2BPlan(clientId: string, fileUrl: string, fileName:
   revalidatePath(`/dashboard/b2b/client/${clientId}`);
   return order;
 }
+
+export async function syncPartnersAndClientsFromExcel(firms: string[]) {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+
+  const nameMap: Record<string, { partnerId: string; clientId: string }> = {};
+
+  for (const name of firms) {
+    if (!name) continue;
+    // Check if partner exists
+    let partner = await db.select().from(b2bPartners).where(and(
+      eq(b2bPartners.name, name),
+      eq(b2bPartners.orgId, context.factoryId)
+    )).limit(1).then(r => r[0]);
+
+    if (!partner) {
+      [partner] = await db.insert(b2bPartners).values({
+        name,
+        orgId: context.factoryId
+      }).returning();
+    }
+
+    // Check if client exists
+    let client = await db.select().from(b2bClients).where(and(
+      eq(b2bClients.name, name),
+      eq(b2bClients.factoryOwnerId, context.factoryId)
+    )).limit(1).then(r => r[0]);
+
+    if (!client) {
+      [client] = await db.insert(b2bClients).values({
+        name,
+        factoryOwnerId: context.factoryId
+      }).returning();
+    }
+
+    nameMap[name] = {
+      partnerId: partner.id,
+      clientId: client.id
+    };
+  }
+
+  return nameMap;
+}
+
+export async function loadLocalPlanIfExists() {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+
+  const localFilePath = path.join(process.cwd(), 'public', 'ONAYSIZ', 'yeniisemri.xlsx');
+  if (!fs.existsSync(localFilePath)) {
+    return { success: false, message: 'Yerel iş emri dosyası bulunamadı.' };
+  }
+
+  try {
+    const fileBuffer = fs.readFileSync(localFilePath);
+    const wb = XLSX.read(fileBuffer, { type: 'buffer' });
+    const sheetName = wb.SheetNames.find((s: string) => s.toLowerCase().includes('sayfa1')) || wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+
+    const items: any[] = [];
+    let currentMachine = 'DİĞER';
+
+    const parseExcelDate = (val: any) => {
+      if (!val) return '';
+      if (typeof val === 'number') {
+        const d = new Date((val - 25569) * 86400 * 1000);
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${dd}.${mm}.${yyyy}`;
+      }
+      return String(val).trim();
+    };
+
+    for (let idx = 0; idx < rows.length; idx++) {
+      const row = rows[idx];
+      if (!row || row.length === 0) continue;
+
+      const firstCell = row[0] ? String(row[0]).trim() : '';
+
+      if (firstCell.toUpperCase().startsWith('MAKİNE')) {
+        currentMachine = firstCell;
+        continue;
+      }
+
+      if (firstCell.toUpperCase() === 'SIRA' || firstCell.toUpperCase() === 'MUTLUKAL İŞ EMRİ' || !row[1]) {
+        continue;
+      }
+
+      const firma = row[1] ? String(row[1]).trim() : '';
+      if (!firma) continue;
+
+      const vehicleCode = (row[5] ? String(row[5]).trim() : '') || (row[3] ? String(row[3]).trim() : '') || 'DİĞER';
+      const orderCode = (row[6] ? String(row[6]).trim() : '') || vehicleCode;
+      const gtin = row[2] ? String(row[2]).trim() : '';
+      const productName = row[4] ? String(row[4]).trim() : '';
+      const boxes = Number(row[10]) || 0;
+      const pallets = Number(row[12]) || 0;
+      const pcs = Number(row[15]) || 0;
+      const prodDate = parseExcelDate(row[23]);
+      const expDate = parseExcelDate(row[24]);
+      const batchNo = row[25] ? String(row[25]).trim() : '';
+      const destination = row[21] ? String(row[21]).trim() : '';
+
+      items.push({
+        machine: currentMachine,
+        firma,
+        gtin,
+        vehicleCode,
+        orderCode,
+        productName,
+        boxes,
+        pallets,
+        pcs,
+        productionDate: prodDate,
+        sktDate: expDate,
+        batchNo,
+        destination,
+        englishName: productName,
+        rawRowIndex: idx
+      });
+    }
+
+    if (items.length === 0) {
+      return { success: false, message: 'İş emri dosyasında aktif veri bulunamadı.' };
+    }
+
+    // Sync firms/partners/clients automatically
+    const uniqueFirms = [...new Set(items.map(it => it.firma))];
+    await syncPartnersAndClientsFromExcel(uniqueFirms);
+
+    const monthTitle = "Aktif İş Emri Listesi";
+    const monthId = "aktif-is-emri-listesi";
+
+    const mSettings = await db.select().from(b2bSettings).where(eq(b2bSettings.orgId, context.factoryId));
+    const found = mSettings.find(r => r.key === 'monthly_master_list');
+
+    let currentMaster: any = { months: [] };
+    if (found && found.value) {
+      try {
+        currentMaster = JSON.parse(found.value);
+      } catch {
+        currentMaster = { months: [] };
+      }
+    }
+
+    const updatedMonths = [...(currentMaster.months || [])];
+    const existingIdx = updatedMonths.findIndex((m: any) => m.monthId === monthId);
+
+    const newMonthObj = {
+      monthId,
+      monthTitle,
+      partnerId: 'local-sync',
+      isCurrent: true,
+      items
+    };
+
+    updatedMonths.forEach((m: any) => { m.isCurrent = false; });
+
+    if (existingIdx >= 0) {
+      updatedMonths[existingIdx] = newMonthObj;
+    } else {
+      updatedMonths.push(newMonthObj);
+    }
+
+    const jsonString = JSON.stringify({ months: updatedMonths });
+    if (found) {
+      await db.update(b2bSettings)
+        .set({ value: jsonString, updatedAt: new Date() })
+        .where(eq(b2bSettings.id, found.id));
+    } else {
+      await db.insert(b2bSettings).values({
+        orgId: context.factoryId,
+        key: 'monthly_master_list',
+        value: jsonString
+      });
+    }
+
+    revalidatePath('/dashboard/b2b');
+    return { success: true, count: items.length };
+
+  } catch (err: any) {
+    console.error('Local Excel sync error:', err);
+    return { success: false, message: err.message || 'Yerel dosya ayrıştırılırken hata oluştu.' };
+  }
+}
+
