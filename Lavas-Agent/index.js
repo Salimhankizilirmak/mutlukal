@@ -114,6 +114,13 @@ const htmlContent = `
         <input type="file" id="reportFile" accept=".pdf,.xlsx,.xls,.docx" class="hidden" onchange="uploadReport(this)">
       </label>
 
+      <!-- MASAÜSTÜNDEN ORTAK İŞ EMRİ YÜKLE -->
+      <button onclick="uploadDesktopPlan()" id="upPlanBtn"
+        class="btn w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold py-4 rounded-xl text-sm flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(37,99,235,.2)]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span id="upPlanBtnText">Masaüstünden Ortak İş Emrini Yükle</span>
+      </button>
+
       <!-- KLASÖR AÇ -->
       <button onclick="openFolder()" class="btn w-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-400 text-xs py-2.5 rounded-xl flex items-center justify-center gap-1.5">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
@@ -248,6 +255,28 @@ async function uploadReport(input) {
     }
   };
   reader.readAsDataURL(file);
+}
+
+async function uploadDesktopPlan() {
+  const btn = document.getElementById('upPlanBtn');
+  const txt = document.getElementById('upPlanBtnText');
+  btn.disabled = true; txt.textContent = 'Yükleniyor...';
+  log('Masaüstündeki yeniisemri.xlsx aranıyor ve yükleniyor...');
+  try {
+    const res = await fetch('/api/upload-desktop-plan', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      log('✔ Ortak iş emri başarıyla yüklendi! Toplam satır: ' + (data.count || 0), '#10b981');
+      alert('İş emri başarıyla sisteme aktarıldı! Toplam: ' + (data.count || 0) + ' satır.');
+    } else {
+      log('⚠ ' + data.message, '#eab308');
+      alert('Hata: ' + data.message);
+    }
+  } catch (err) {
+    log('✖ Sunucu bağlantı hatası: ' + err.message, '#ef4444');
+    alert('Sunucuyla bağlantı kurulamadı.');
+  }
+  btn.disabled = false; txt.textContent = 'Masaüstünden Ortak İş Emrini Yükle';
 }
 
 function openFolder() { fetch('/api/open-folder'); }
@@ -410,6 +439,39 @@ app.post('/api/transfer', async (req, res) => {
         res.json(apiRes.data?.success ? { success: true } : { success: false, message: 'Aktarım başarısız.' });
     } catch (e) {
         res.json({ success: false, message: 'Bağlantı hatası: ' + e.message });
+    }
+});
+
+app.post('/api/upload-desktop-plan', async (req, res) => {
+    if (!config) return res.json({ success: false, message: 'Cihaz kayıtlı değil.' });
+    
+    const os = require('os');
+    const homedir = os.homedir();
+    let desktopPath = path.join(homedir, 'Desktop');
+    if (!fs.existsSync(desktopPath)) {
+        desktopPath = path.join(homedir, 'Masaüstü');
+    }
+    const filePath = path.join(desktopPath, 'yeniisemri.xlsx');
+    
+    if (!fs.existsSync(filePath)) {
+        return res.json({ success: false, message: `Masaüstünüzde 'yeniisemri.xlsx' bulunamadı!\nDosya yolunu kontrol edin: ${filePath}` });
+    }
+    
+    try {
+        const fileBuffer = fs.readFileSync(filePath);
+        const base64 = fileBuffer.toString('base64');
+        
+        const response = await axios.post(API_BASE_URL, {
+            action: 'upload_plan',
+            deviceSecret: config.deviceSecret,
+            base64,
+            fileName: 'yeniisemri.xlsx'
+        }, { timeout: 30000 });
+        
+        res.json(response.data);
+    } catch (e) {
+        const errorDetail = e.response?.data?.message || e.response?.data?.error || e.message;
+        res.json({ success: false, message: 'İş emri yüklenirken hata oluştu: ' + errorDetail });
     }
 });
 

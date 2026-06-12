@@ -26,6 +26,7 @@ export default function ReconcilePage() {
   const [reportFile, setReportFile] = useState<File | null>(null);
   const [refFile, setRefFile] = useState<File | null>(null);
   const [targetCount, setTargetCount] = useState<number>(0);
+  const [itemsPerKoli, setItemsPerKoli] = useState<number>(30);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -54,6 +55,7 @@ export default function ReconcilePage() {
   const handleProcess = async () => {
     if (!reportFile || !refFile) { setError('Lütfen her iki dosyayı da seçin.'); return; }
     if (targetCount <= 0) { setError('Lütfen geçerli bir adet girin.'); return; }
+    if (itemsPerKoli <= 0) { setError('Lütfen geçerli bir koli içi ürün adedi girin.'); return; }
 
     setLoading(true);
     setError('');
@@ -129,7 +131,7 @@ export default function ReconcilePage() {
       const finalLines: string[] = [];
       
       for (let i = 0; i < finalProds.length; i++) {
-        const isNewKoli = i % 30 === 0;
+        const isNewKoli = i % itemsPerKoli === 0;
         if (i > 0 && isNewKoli) {
           currentSSCC = generateNextSSCC(currentSSCC);
         }
@@ -210,15 +212,27 @@ export default function ReconcilePage() {
             onFileSelect={(f) => setRefFile(f)}
           />
 
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block font-bold">Hedef Toplam Adet</label>
-            <input
-              type="number"
-              value={targetCount || ''}
-              onChange={(e) => setTargetCount(parseInt(e.target.value))}
-              placeholder="Örn: 52920"
-              className="w-full bg-[#09090b] border border-zinc-800 rounded-xl px-4 py-3 text-zinc-200 text-sm outline-none focus:border-amber-500/50 transition-all"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block font-bold">Hedef Toplam Adet</label>
+              <input
+                type="number"
+                value={targetCount || ''}
+                onChange={(e) => setTargetCount(parseInt(e.target.value) || 0)}
+                placeholder="Örn: 52920"
+                className="w-full bg-[#09090b] border border-zinc-800 rounded-xl px-4 py-3 text-zinc-200 text-sm outline-none focus:border-amber-500/50 transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block font-bold">Koli İçi Ürün Adedi</label>
+              <input
+                type="number"
+                value={itemsPerKoli || ''}
+                onChange={(e) => setItemsPerKoli(parseInt(e.target.value) || 0)}
+                placeholder="Örn: 30"
+                className="w-full bg-[#09090b] border border-zinc-800 rounded-xl px-4 py-3 text-zinc-200 text-sm outline-none focus:border-amber-500/50 transition-all"
+              />
+            </div>
           </div>
 
           {error && (

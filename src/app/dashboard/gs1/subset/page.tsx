@@ -9,6 +9,7 @@ import Papa from 'papaparse';
 export default function SubsetPage() {
   const [file, setFile] = useState<File | null>(null);
   const [targetCount, setTargetCount] = useState<number>(0);
+  const [itemsPerKoli, setItemsPerKoli] = useState<number>(30);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -16,6 +17,7 @@ export default function SubsetPage() {
   const handleProcess = async () => {
     if (!file) { setError('Lütfen bir dosya seçin.'); return; }
     if (targetCount <= 0) { setError('Lütfen geçerli bir adet girin.'); return; }
+    if (itemsPerKoli <= 0) { setError('Lütfen geçerli bir koli içi ürün adedi girin.'); return; }
 
     setLoading(true);
     setError('');
@@ -52,7 +54,7 @@ export default function SubsetPage() {
       const finalLines: string[] = [];
       
       for (let i = 0; i < prods.length; i++) {
-        if (i > 0 && i % 30 === 0) {
+        if (i > 0 && i % itemsPerKoli === 0) {
           currentSSCC = generateNextSSCC(currentSSCC);
         }
         finalLines.push(`${prods[i]}\t${currentSSCC}`);
@@ -102,15 +104,27 @@ export default function SubsetPage() {
             onFileSelect={(f) => setFile(f)}
           />
 
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block font-bold">Hedef Ürün Adedi</label>
-            <input
-              type="number"
-              value={targetCount || ''}
-              onChange={(e) => setTargetCount(parseInt(e.target.value))}
-              placeholder="Örn: 37800"
-              className="w-full bg-[#09090b] border border-zinc-800 rounded-xl px-4 py-3 text-zinc-200 text-sm outline-none focus:border-amber-500/50 transition-all"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block font-bold">Hedef Ürün Adedi</label>
+              <input
+                type="number"
+                value={targetCount || ''}
+                onChange={(e) => setTargetCount(parseInt(e.target.value) || 0)}
+                placeholder="Örn: 37800"
+                className="w-full bg-[#09090b] border border-zinc-800 rounded-xl px-4 py-3 text-zinc-200 text-sm outline-none focus:border-amber-500/50 transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block font-bold">Koli İçi Ürün Adedi</label>
+              <input
+                type="number"
+                value={itemsPerKoli || ''}
+                onChange={(e) => setItemsPerKoli(parseInt(e.target.value) || 0)}
+                placeholder="Örn: 30"
+                className="w-full bg-[#09090b] border border-zinc-800 rounded-xl px-4 py-3 text-zinc-200 text-sm outline-none focus:border-amber-500/50 transition-all"
+              />
+            </div>
           </div>
 
           {error && (

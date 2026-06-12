@@ -630,17 +630,8 @@ export async function syncPartnersAndClientsFromExcel(firms: string[]) {
   return nameMap;
 }
 
-export async function loadLocalPlanIfExists() {
-  const context = await getFactoryContext();
-  if (!context.factoryId) throw new Error('Yetkisiz');
-
-  const localFilePath = path.join(process.cwd(), 'public', 'ONAYSIZ', 'yeniisemri.xlsx');
-  if (!fs.existsSync(localFilePath)) {
-    return { success: false, message: 'Yerel iş emri dosyası bulunamadı.' };
-  }
-
+export async function parseAndSavePlanBuffer(fileBuffer: Buffer, orgId: string) {
   try {
-    const fileBuffer = fs.readFileSync(localFilePath);
     const wb = XLSX.read(fileBuffer, { type: 'buffer' });
     const sheetName = wb.SheetNames.find((s: string) => s.toLowerCase().includes('sayfa1')) || wb.SheetNames[0];
     const ws = wb.Sheets[sheetName];
@@ -716,12 +707,50 @@ export async function loadLocalPlanIfExists() {
 
     // Sync firms/partners/clients automatically
     const uniqueFirms = [...new Set(items.map(it => it.firma))];
-    await syncPartnersAndClientsFromExcel(uniqueFirms);
+    
+    // We need to pass the proper context orgId since it runs inside Next.js environment.
+    // Instead of using getFactoryContext directly inside syncPartnersAndClientsFromExcel,
+    // we can pass orgId explicitly or mock context.
+    const nameMap: Record<string, { partnerId: string; clientId: string }> = {};
+
+    for (const name of uniqueFirms) {
+      if (!name) continue;
+      // Check if partner exists
+      let partner = await db.select().from(b2bPartners).where(and(
+        eq(b2bPartners.name, name),
+        eq(b2bPartners.orgId, orgId)
+      )).limit(1).then(r => r[0]);
+
+      if (!partner) {
+        [partner] = await db.insert(b2bPartners).values({
+          name,
+          orgId: orgId
+        }).returning();
+      }
+
+      // Check if client exists
+      let client = await db.select().from(b2bClients).where(and(
+        eq(b2bClients.name, name),
+        eq(b2bClients.factoryOwnerId, orgId)
+      )).limit(1).then(r => r[0]);
+
+      if (!client) {
+        [client] = await db.insert(b2bClients).values({
+          name,
+          factoryOwnerId: orgId
+        }).returning();
+      }
+
+      nameMap[name] = {
+        partnerId: partner.id,
+        clientId: client.id
+      };
+    }
 
     const monthTitle = "Aktif İş Emri Listesi";
     const monthId = "aktif-is-emri-listesi";
 
-    const mSettings = await db.select().from(b2bSettings).where(eq(b2bSettings.orgId, context.factoryId));
+    const mSettings = await db.select().from(b2bSettings).where(eq(b2bSettings.orgId, orgId));
     const found = mSettings.find(r => r.key === 'monthly_master_list');
 
     let currentMaster: any = { months: [] };
@@ -759,7 +788,7 @@ export async function loadLocalPlanIfExists() {
         .where(eq(b2bSettings.id, found.id));
     } else {
       await db.insert(b2bSettings).values({
-        orgId: context.factoryId,
+        orgId: orgId,
         key: 'monthly_master_list',
         value: jsonString
       });
@@ -768,6 +797,24 @@ export async function loadLocalPlanIfExists() {
     revalidatePath('/dashboard/b2b');
     return { success: true, count: items.length };
 
+  } catch (err: any) {
+    console.error('Plan buffer parsing error:', err);
+    return { success: false, message: err.message || 'Dosya ayrıştırılırken hata oluştu.' };
+  }
+}
+
+export async function loadLocalPlanIfExists() {
+  const context = await getFactoryContext();
+  if (!context.factoryId) throw new Error('Yetkisiz');
+
+  const localFilePath = path.join(process.cwd(), 'public', 'ONAYSIZ', 'yeniisemri.xlsx');
+  if (!fs.existsSync(localFilePath)) {
+    return { success: false, message: 'Yerel iş emri dosyası bulunamadı.' };
+  }
+
+  try {
+    const fileBuffer = fs.readFileSync(localFilePath);
+    return await parseAndSavePlanBuffer(fileBuffer, context.factoryId);
   } catch (err: any) {
     console.error('Local Excel sync error:', err);
     return { success: false, message: err.message || 'Yerel dosya ayrıştırılırken hata oluştu.' };

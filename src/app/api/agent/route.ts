@@ -6,14 +6,31 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { s3Client } from '@/lib/s3';
 import { v4 as uuidv4 } from 'uuid';
+import { parseAndSavePlanBuffer } from '@/app/dashboard/b2b/actions';
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { action, deviceSecret, targetDeviceId, batchId, fileName, reportUrl } = body;
+  const { action, deviceSecret, targetDeviceId, batchId, fileName, reportUrl, base64 } = body;
 
   // deviceSecret ile doğrula (pinCode değil)
   const device = await db.select().from(devices).where(eq(devices.deviceSecret, deviceSecret)).limit(1);
   if (!device.length) return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 });
+
+  // 0. ADIM: MASAÜSTÜNDEN GELEN ORTAK İŞ EMRİNİ YÜKLE VE İŞLE
+  if (action === 'upload_plan') {
+    if (!base64) {
+      return NextResponse.json({ success: false, message: 'Dosya içeriği gönderilmedi.' });
+    }
+    try {
+      const fileBuffer = Buffer.from(base64, 'base64');
+      const result = await parseAndSavePlanBuffer(fileBuffer, device[0].orgId);
+      return NextResponse.json(result);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Dosya işlenirken bir hata oluştu.';
+      console.error('API Plan Upload Error:', err);
+      return NextResponse.json({ success: false, message: errMsg });
+    }
+  }
 
   // 1. ADIM: RAPOR İÇİN YÜKLEME URL'İ AL
   if (action === 'get_report_upload_url') {

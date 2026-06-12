@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { RefreshCw, Scissors, FileCode, ShieldAlert, ArrowRight, Smartphone } from 'lucide-react';
+import { RefreshCw, Scissors, FileCode, ShieldAlert, ArrowRight, Smartphone, Scan } from 'lucide-react';
 
 const tools = [
   {
@@ -49,6 +49,14 @@ const tools = [
     icon: Smartphone,
     color: 'text-zinc-100',
     bg: 'bg-zinc-100/10',
+  },
+  {
+    title: 'Karekod Terminal Okuyucu',
+    description: 'El terminali ile okutulan barkodları hızlıca listeler, mükerrer kontrolü yapar ve CSV olarak kaydeder.',
+    href: '/dashboard/gs1/scanner',
+    icon: Scan,
+    color: 'text-emerald-400',
+    bg: 'bg-emerald-400/10',
   },
 ];
 

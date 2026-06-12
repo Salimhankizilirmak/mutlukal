@@ -9,7 +9,7 @@ import { generateNextSSCC, formatAsKoliSSCC } from '@/lib/gs1';
 import JSZip from 'jszip';
 
 export default function GS1ToolsPage() {
-  const [activeTab, setActiveTab] = useState<'split' | 'trim' | 'reconcile'>('split');
+  const [activeTab, setActiveTab] = useState<'split' | 'trim' | 'reconcile' | 'subtract'>('split');
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
@@ -49,6 +49,12 @@ export default function GS1ToolsPage() {
         >
           <FileCheck size={16} /> Eşleştirme & Raporlama
         </button>
+        <button
+          onClick={() => setActiveTab('subtract')}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'subtract' ? 'bg-indigo-600 text-white shadow-lg' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}`}
+        >
+          <FileMinus size={16} /> Barkod Düşme (Subtract)
+        </button>
       </div>
 
       {/* Content */}
@@ -56,6 +62,7 @@ export default function GS1ToolsPage() {
         {activeTab === 'split' && <SplitTab />}
         {activeTab === 'trim' && <TrimTab />}
         {activeTab === 'reconcile' && <ReconcileTab />}
+        {activeTab === 'subtract' && <SubtractTab />}
       </div>
     </div>
   );
@@ -253,6 +260,7 @@ function ReconcileTab() {
   const [refFile, setRefFile] = useState<File | null>(null);
   const [deviceFiles, setDeviceFiles] = useState<File[]>([]);
   const [targetKoli, setTargetKoli] = useState('');
+  const [itemsPerKoli, setItemsPerKoli] = useState('30');
   const [loading, setLoading] = useState(false);
   const [log, setLog] = useState<string[]>([]);
 
@@ -266,9 +274,9 @@ function ReconcileTab() {
 
     setLoading(true); setLog([]);
     try {
-      const itemsPerKoli = 30;
-      const targetCount = koliCount * itemsPerKoli;
-      addLog(`Hedef: ${koliCount} koli (${targetCount} ürün)`);
+      const itemsPerKoliNum = parseInt(itemsPerKoli) || 30;
+      const targetCount = koliCount * itemsPerKoliNum;
+      addLog(`Hedef: ${koliCount} koli (${targetCount} ürün, koli içi: ${itemsPerKoliNum})`);
 
       // 1. Get current SSCC State
       addLog('Global SSCC sayacı sunucudan çekiliyor...');
@@ -362,7 +370,7 @@ function ReconcileTab() {
       let currentFormattedKoli = formatAsKoliSSCC(currentSSCCState);
 
       for (let i = 0; i < finalCodes.length; i++) {
-          if (i > 0 && i % itemsPerKoli === 0) {
+          if (i > 0 && i % itemsPerKoliNum === 0) {
               currentSSCCState = generateNextSSCC(currentSSCCState);
               currentFormattedKoli = formatAsKoliSSCC(currentSSCCState);
           }
@@ -457,9 +465,15 @@ function ReconcileTab() {
         </div>
       </div>
 
-      <div>
-        <label className="text-[10px] font-bold text-zinc-500 uppercase">3. Hedef Koli Miktarı</label>
-        <input type="number" value={targetKoli} onChange={e => setTargetKoli(e.target.value)} placeholder="Örn: 2016" className="w-full max-w-xs bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 mt-1 text-sm text-white outline-none focus:border-emerald-500 block" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <div>
+          <label className="text-[10px] font-bold text-zinc-500 uppercase">3. Hedef Koli Miktarı</label>
+          <input type="number" value={targetKoli} onChange={e => setTargetKoli(e.target.value)} placeholder="Örn: 2016" className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 mt-1 text-sm text-white outline-none focus:border-emerald-500 block" />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-zinc-500 uppercase">Koli İçi Ürün Adedi</label>
+          <input type="number" value={itemsPerKoli} onChange={e => setItemsPerKoli(e.target.value)} placeholder="Örn: 30" className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 mt-1 text-sm text-white outline-none focus:border-emerald-500 block" />
+        </div>
       </div>
 
       <button onClick={handleReconcile} disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2">
@@ -469,6 +483,170 @@ function ReconcileTab() {
 
       {log.length > 0 && (
         <div className="bg-black border border-zinc-800 rounded-xl p-4 font-mono text-[10px] text-zinc-400 h-48 overflow-y-auto space-y-1">
+          {log.map((msg, i) => (
+            <div key={i}>{msg}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 4. SUBTRACT TAB (Dosyadan Barkod Düşme)
+// ---------------------------------------------------------------------------
+function SubtractTab() {
+  const [mainFile, setMainFile] = useState<File | null>(null);
+  const [scannedFile, setScannedFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [log, setLog] = useState<string[]>([]);
+
+  const addLog = (msg: string) => setLog(prev => [...prev, msg]);
+
+  const handleSubtract = async () => {
+    if (!mainFile || !scannedFile) return setError('Lütfen hem ana sevkiyat dosyasını hem de okutulanlar listesini seçin.');
+    
+    setLoading(true); setError(''); setSuccess(''); setLog([]);
+    try {
+      addLog(`İşlem başlatıldı...`);
+      addLog(`Ana sevkiyat dosyası okunuyor: ${mainFile.name}`);
+      const mainText = await mainFile.text();
+      const mainClean = mainText.startsWith('\ufeff') ? mainText.slice(1) : mainText;
+      const mainLines = mainClean.split(/\r?\n/).filter(l => l.trim().length > 0);
+      addLog(`Ana dosyada toplam ${mainLines.length} satır bulundu.`);
+
+      addLog(`Okutulan barkodlar dosyası okunuyor: ${scannedFile.name}`);
+      const scannedText = await scannedFile.text();
+      const scannedClean = scannedText.startsWith('\ufeff') ? scannedText.slice(1) : scannedText;
+      const scannedLines = scannedClean.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+      addLog(`Okutulanlar listesinde toplam ${scannedLines.length} barkod bulundu.`);
+
+      // Temizleme fonksiyonu: boşlukları, özel karakterleri (\u001d, \x1d) ve parantezleri temizler
+      const cleanCode = (c: string) => c.replace(/\s/g, '').replace(/[\x1d\u001d\(\)]/g, '').trim();
+
+      // Okutulan kodları sayalım (mükerrer barkodları güvenle tek tek eşleştirerek düşürmek için)
+      const scannedMap: Record<string, number> = {};
+      scannedLines.forEach(line => {
+        const cleaned = cleanCode(line);
+        if (cleaned) {
+          scannedMap[cleaned] = (scannedMap[cleaned] || 0) + 1;
+        }
+      });
+      addLog(`Benzersiz düşülecek barkod sayısı: ${Object.keys(scannedMap).length}`);
+
+      // Ana dosyayı satır satır tarayıp barkodları düşüyoruz
+      const finalLines: string[] = [];
+      let removedCount = 0;
+      
+      mainLines.forEach((line) => {
+        const parts = line.split('\t');
+        const mainCode = parts[0] ? parts[0].trim() : '';
+        const cleanedMain = cleanCode(mainCode);
+        
+        if (cleanedMain && scannedMap[cleanedMain] && scannedMap[cleanedMain] > 0) {
+          // Bu barkod düşülecekler listesinde var!
+          scannedMap[cleanedMain]--;
+          removedCount++;
+        } else {
+          // Bu barkodu tutuyoruz
+          finalLines.push(line);
+        }
+      });
+
+      addLog(`Ana dosyadan toplam ${removedCount} eşleşen ürün barkodu başarıyla düşüldü.`);
+
+      // Bulunamayan barkodları listeleyelim
+      const notFoundList: string[] = [];
+      Object.entries(scannedMap).forEach(([code, count]) => {
+        if (count > 0) {
+          notFoundList.push(code);
+        }
+      });
+
+      if (notFoundList.length > 0) {
+        addLog(`⚠️ UYARI: Okutulan listedeki ${notFoundList.length} adet kod ana sevkiyat dosyasında bulunamadı!`);
+        notFoundList.slice(0, 10).forEach(code => {
+          addLog(`  -> Bulunamayan: ${code}`);
+        });
+        if (notFoundList.length > 10) {
+          addLog(`  -> ... ve ${notFoundList.length - 10} adet daha.`);
+        }
+      }
+
+      // Çıktı CSV dosyasını indirelim
+      const output = '\ufeff' + finalLines.join('\r\n');
+      const blob = new Blob([output], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      const mainNameNoExt = mainFile.name.replace(/\.[^/.]+$/, "");
+      a.download = `${mainNameNoExt}_Dusulmus.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setSuccess(`Düşme işlemi tamamlandı! Ana dosyadan ${removedCount} ürün silindi. Kalan ürün sayısı: ${finalLines.length}. Yeni dosya indirildi.`);
+    } catch (e: any) {
+      setError(e.message || 'Hata oluştu.');
+      addLog(`❌ HATA: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-lg font-bold text-white">Dosyadan Barkod Düşme (Subtract)</h2>
+      <p className="text-xs text-zinc-400 font-medium leading-relaxed">
+        Ana sevkiyat raporundan (koli SSCC eşleştirmeli CSV), el terminali ile okuttuğunuz hatalı/geri dönen palet veya kolilere ait ürün barkodlarını siler.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className="text-[10px] font-bold text-zinc-500 uppercase mb-2 block">1. Ana Sevkiyat Raporu (Gümrükten Dönen CSV Rapor)</label>
+          {!mainFile ? (
+            <label className="border-2 border-dashed border-zinc-700 bg-zinc-900/50 rounded-2xl flex flex-col items-center justify-center py-8 cursor-pointer hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-all">
+               <span className="text-xs font-bold text-zinc-300">Ana Rapor Seç (CSV)</span>
+               <input type="file" accept=".csv,.txt" className="hidden" onChange={e => e.target.files && setMainFile(e.target.files[0])} />
+            </label>
+          ) : (
+            <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-center justify-between">
+              <span className="text-xs font-mono text-zinc-300 truncate max-w-[200px]">{mainFile.name}</span>
+              <button onClick={() => setMainFile(null)} className="text-[10px] text-red-400 hover:text-red-300 underline font-semibold">Değiştir</button>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="text-[10px] font-bold text-zinc-500 uppercase mb-2 block">2. Düşülecek Okunan Kodlar (Terminal Çıktısı CSV)</label>
+          {!scannedFile ? (
+            <label className="border-2 border-dashed border-zinc-700 bg-zinc-900/50 rounded-2xl flex flex-col items-center justify-center py-8 cursor-pointer hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-all">
+               <span className="text-xs font-bold text-zinc-300">Okutulan Listeyi Seç (CSV)</span>
+               <input type="file" accept=".csv,.txt" className="hidden" onChange={e => e.target.files && setScannedFile(e.target.files[0])} />
+            </label>
+          ) : (
+            <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-center justify-between">
+              <span className="text-xs font-mono text-zinc-300 truncate max-w-[200px]">{scannedFile.name}</span>
+              <button onClick={() => setScannedFile(null)} className="text-[10px] text-red-400 hover:text-red-300 underline font-semibold">Değiştir</button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <button onClick={handleSubtract} disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-xl flex justify-center items-center gap-2 transition-all shadow-lg shadow-indigo-900/20">
+        {loading ? <Loader2 className="animate-spin" size={18} /> : <FileCheck size={18} />}
+        {loading ? 'Barkodlar Düşülüyor...' : 'Barkodları Düş ve İndir'}
+      </button>
+
+      {error && <p className="text-xs text-red-400 bg-red-500/10 p-3 rounded-lg">{error}</p>}
+      {success && <p className="text-xs text-emerald-400 bg-emerald-500/10 p-3 rounded-lg flex items-center gap-2 font-semibold"><CheckCircle2 size={16}/> {success}</p>}
+
+      {log.length > 0 && (
+        <div className="bg-black border border-zinc-800 rounded-xl p-4 font-mono text-[10px] text-zinc-400 h-48 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-zinc-850">
           {log.map((msg, i) => (
             <div key={i}>{msg}</div>
           ))}

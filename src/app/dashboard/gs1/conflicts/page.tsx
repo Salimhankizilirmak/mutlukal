@@ -8,12 +8,14 @@ import Papa from 'papaparse';
 
 export default function ConflictsPage() {
   const [file, setFile] = useState<File | null>(null);
+  const [itemsPerKoli, setItemsPerKoli] = useState<number>(30);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
   const handleProcess = async () => {
     if (!file) { setError('Lütfen bir dosya seçin.'); return; }
+    if (itemsPerKoli <= 0) { setError('Lütfen geçerli bir koli içi ürün adedi girin.'); return; }
 
     setLoading(true);
     setError('');
@@ -41,7 +43,7 @@ export default function ConflictsPage() {
       const finalLines: string[] = [];
       
       for (let i = 0; i < prods.length; i++) {
-        if (i > 0 && i % 30 === 0) {
+        if (i > 0 && i % itemsPerKoli === 0) {
           currentSSCC = generateNextSSCC(currentSSCC);
         }
         finalLines.push(`${prods[i]}\t${currentSSCC}`);
@@ -93,6 +95,17 @@ export default function ConflictsPage() {
             accept=".csv,.txt"
             onFileSelect={(f) => setFile(f)}
           />
+
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block font-bold">Koli İçi Ürün Adedi</label>
+            <input
+              type="number"
+              value={itemsPerKoli || ''}
+              onChange={(e) => setItemsPerKoli(parseInt(e.target.value) || 0)}
+              placeholder="Örn: 30"
+              className="w-full bg-[#09090b] border border-zinc-800 rounded-xl px-4 py-3 text-zinc-200 text-sm outline-none focus:border-amber-500/50 transition-all"
+            />
+          </div>
 
           {error && (
             <div className="flex items-center gap-3 p-4 bg-red-500/5 border border-red-500/20 rounded-2xl text-red-400 text-xs">

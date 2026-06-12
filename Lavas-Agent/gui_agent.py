@@ -6,9 +6,9 @@ import json
 import threading
 
 # --- AYARLAR ---
-API_URL = "http://localhost:3000/api/agent/task"
-API_TASK_URL = "http://localhost:3000/api/agent/task"
-API_AUTH_URL = "http://localhost:3000/api/agent/auth"
+API_BASE_URL = "https://mutlukal.novexistech.com/api/agent"
+API_TASK_URL = "https://mutlukal.novexistech.com/api/agent/task"
+API_AUTH_URL = "https://mutlukal.novexistech.com/api/agent/auth"
 
 # Masaüstü yolunu güvenle bul
 DESKTOP = os.path.join(os.path.expanduser("~"), "Desktop")
@@ -110,7 +110,7 @@ class LavasAgent(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Lavaş Trace - Makine Paneli")
-        self.geometry("620x520")
+        self.geometry("620x600")
         self.resizable(False, False)
         self.configure(fg_color="#09090b")
 
@@ -153,6 +153,15 @@ class LavasAgent(ctk.CTk):
             command=self.send_report
         )
         self.btn_report.pack(pady=10)
+
+        # Masaüstünden Ortak İş Emri Yükle Butonu
+        self.btn_upload_plan = ctk.CTkButton(
+            self, text="📤  MASAÜSTÜNDEN ORTAK İŞ EMRİ YÜKLE",
+            font=("Arial", 17, "bold"), height=65, width=450,
+            fg_color="#2563eb", hover_color="#1d4ed8",
+            command=self.upload_desktop_plan
+        )
+        self.btn_upload_plan.pack(pady=10)
 
         # Klasörü Aç Butonu
         self.btn_open = ctk.CTkButton(
@@ -276,7 +285,7 @@ class LavasAgent(ctk.CTk):
                 self.after(0, lambda: self.log("Rapor sunucuya yükleniyor..."))
                 with open(file_path, "rb") as f:
                     res = requests.post(
-                        API_URL,
+                        API_TASK_URL,
                         files={"report": (file_name, f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
                         data={
                             "deviceSecret": self.device_secret,
@@ -298,6 +307,51 @@ class LavasAgent(ctk.CTk):
                 self.after(0, lambda: messagebox.showerror("Hata", f"İşlem sırasında hata: {e}"))
             finally:
                 self.after(0, lambda: self.btn_report.configure(state="normal", text="📤  RAPORU SEÇ VE GÖNDER"))
+
+        threading.Thread(target=do_upload, daemon=True).start()
+
+    def upload_desktop_plan(self):
+        if not self.config:
+            messagebox.showwarning("Uyarı", "Önce cihaz kaydı yapmalısınız.")
+            return
+
+        file_path = os.path.join(DESKTOP, "yeniisemri.xlsx")
+        if not os.path.exists(file_path):
+            messagebox.showerror("Hata", f"Masaüstünüzde 'yeniisemri.xlsx' bulunamadı!\nDosya yolunu kontrol edin: {file_path}")
+            return
+
+        self.log("Masaüstündeki yeniisemri.xlsx aranıyor ve yükleniyor...")
+        self.btn_upload_plan.configure(state="disabled", text="⏳  Yükleniyor...")
+
+        def do_upload():
+            try:
+                import base64
+                with open(file_path, "rb") as f:
+                    file_bytes = f.read()
+                base64_data = base64.b64encode(file_bytes).decode('utf-8')
+                
+                res = requests.post(API_BASE_URL, json={
+                    "action": "upload_plan",
+                    "deviceSecret": self.config["deviceSecret"],
+                    "base64": base64_data,
+                    "fileName": "yeniisemri.xlsx"
+                }, timeout=30)
+                
+                if res.status_code == 200:
+                    data = res.json()
+                    if data.get("success"):
+                        self.after(0, lambda: messagebox.showinfo("Başarılı", f"İş emri başarıyla yüklendi! Toplam satır: {data.get('count', 0)}"))
+                        self.after(0, lambda: self.log(f"✔ Ortak iş emri başarıyla yüklendi! Satır: {data.get('count', 0)}"))
+                    else:
+                        msg = data.get("message", "Yükleme başarısız.")
+                        self.after(0, lambda: messagebox.showerror("Hata", msg))
+                        self.after(0, lambda: self.log(f"⚠ Yükleme hatası: {msg}"))
+                else:
+                    self.after(0, lambda: messagebox.showerror("Hata", f"Sunucu hatası: {res.status_code}"))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Hata", f"Bağlantı hatası: {e}"))
+            finally:
+                self.after(0, lambda: self.btn_upload_plan.configure(state="normal", text="📤  MASAÜSTÜNDEN ORTAK İŞ EMRİ YÜKLE"))
 
         threading.Thread(target=do_upload, daemon=True).start()
 
@@ -324,7 +378,7 @@ class LavasAgent(ctk.CTk):
 
         def load_devices():
             try:
-                res = requests.post(API_URL, json={
+                res = requests.post(API_BASE_URL, json={
                     "action": "get_devices",
                     "deviceSecret": self.config["deviceSecret"]
                 }, timeout=10)
@@ -351,7 +405,7 @@ class LavasAgent(ctk.CTk):
 
             def do_transfer():
                 try:
-                    res = requests.post(API_URL, json={
+                    res = requests.post(API_BASE_URL, json={
                         "action": "transfer_batch",
                         "deviceSecret": self.config["deviceSecret"],
                         "batchId": self.current_batch_id,
